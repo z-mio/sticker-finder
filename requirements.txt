@@ -1,0 +1,6 @@
+Pyrogram
+PyYAML
+loguru
+TgCrypto
+SQLAlchemy
+rapidocr_onnxruntime
