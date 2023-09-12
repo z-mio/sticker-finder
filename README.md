@@ -1,7 +1,7 @@
 # 贴纸收藏夹Bot
 
 
-**使用教程**：[LINK]([sticker-finder](xsjapp://doc/b01f30e8-94d7-4839-83e5-b0a36a38c938#xsj_1694490373279))
+**使用教程**：[LINK](https://telegra.ph/%E8%B4%B4%E7%BA%B8%E6%94%B6%E8%97%8F%E5%A4%B9bot%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B-09-08)
 
 
 ## 1.安装
