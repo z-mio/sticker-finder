@@ -34,6 +34,14 @@ hostname = ''  # '127.0.0.1'
 port = ''  # '7890'
 ```
 
+**1.4 打开bot内联模式**
+
+在 https://t.me/BotFather 新建bot后
+
+<img src="https://img.chkaja.com/0067b6b46aac67f7.gif" alt="0067b6b46aac67f7.gif" title="0067b6b46aac67f7.gif" width="400" />
+
+
+
 ## 2.运行
 
 **前台启动bot**
