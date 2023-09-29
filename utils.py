@@ -1,4 +1,3 @@
-# 获取贴纸包信息
 import asyncio
 from collections import defaultdict
 from time import time

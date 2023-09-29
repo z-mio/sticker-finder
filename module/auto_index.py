@@ -1,3 +1,6 @@
+import concurrent
+from concurrent.futures import ThreadPoolExecutor
+
 from loguru import logger
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Sticker
@@ -29,36 +32,43 @@ async def set_auto_index(_, callback_query: CallbackQuery):
     await callback_query.message.edit_reply_markup(InlineKeyboardMarkup(button))
 
 
+def update(client: Client, i, insert_stacker):
+    print(i)
+    set_name = i.set_name
+    uid = i.uid
+    stk_set = parse_stickers(client, set_name)
+    stks: list[Sticker] = stk_set['final']
+    existing_stickers = [i.sticker_unique_id for i in stick_find(set_name, uid)]
+    for s in stks:
+        if s.file_unique_id in existing_stickers:
+            continue
+        stk = insert_stacker(client, uid, s)
+        button = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f'标签：{stk["tag"]}',
+                                     switch_inline_query_current_chat=f'{stk["sticker_unique_id"]}')
+            ],
+            [
+                InlineKeyboardButton('新贴纸|已自动索引', url=f't.me/addstickers/{set_name}')
+            ]
+        ])
+        client.send_sticker(
+            chat_id=uid,
+            sticker=s.file_id,
+            reply_markup=button
+        )
+
+
 @logger.catch()
 def index_sticker(client: Client):
     from module.insert_sticker import insert_stacker
     session = DBSession()
     stmt = select(AutoIndexSticker)
     result = session.execute(stmt).scalars().all()
-    for i in result:
-        set_name = i.set_name
-        uid = i.uid
-        stk_set = parse_stickers(client, set_name)
-        stks: list[Sticker] = stk_set['final']
-        existing_stickers = [i.sticker_unique_id for i in stick_find(set_name, uid)]
-        for s in stks:
-            if s.file_unique_id in existing_stickers:
-                continue
-            stk = insert_stacker(client, uid, s)
-            button = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f'标签：{stk["tag"]}',
-                                         switch_inline_query_current_chat=f'{stk["sticker_unique_id"]}')
-                ],
-                [
-                    InlineKeyboardButton('新贴纸|已自动索引', url=f't.me/addstickers/{set_name}')
-                ]
-            ])
-            client.send_sticker(
-                chat_id=uid,
-                sticker=s.file_id,
-                reply_markup=button
-            )
+    
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(update, client, i, insert_stacker) for i in result]
+    [future.result() for future in concurrent.futures.wait(futures).done]
 
 
 def scheduled_indexing_tasks(client: Client):
