@@ -32,8 +32,6 @@ def help_(client: Client, message: Message):
     STICKER_PACK_STATUS[message.from_user.id] = True
     try:
         add_sticker_pack(client, message)
-    except LoadImageError:
-        return message.reply('OCR识别失败，可能是贴纸下载错误')
     except Exception as e:
         logger.error(e)
         message.reply(f'添加失败，请重试\n错误：{e}')
@@ -151,7 +149,12 @@ def sticker_exist(uid, file_unique_id) -> Sticker:
 def download_sticker(client: Client, sticker_id: str):
     path = DOWNLOADS_PATH.joinpath(f'{sticker_id[:5]}_{time.time():.0f}.png')
     path = client.download_media(sticker_id, path)
-    tag = ''.join(ocr_rapid(path)) or "None"
+    try:
+        ocr = ocr_rapid(path)
+    except LoadImageError:
+        tag = 'None'
+    else:
+        tag = ''.join(ocr) or "None"
     chat_data[f'ocrTag_{sticker_id}'] = tag
     os.remove(path)
     del tag, path
