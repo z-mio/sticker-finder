@@ -31,10 +31,10 @@ config_handler = YAMLHandler('config.yaml')
 config = config_handler.read()
 
 # user
-admin = config['user']['admin']
 bot_token = config['user']['bot_token']
 api_id = config['user']['api_id']
 api_hash = config['user']['api_hash']
+admin = config['user']['admin']
 # proxy
 scheme = config['proxy']['scheme']
 hostname = config['proxy']['hostname']

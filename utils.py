@@ -5,11 +5,12 @@ from time import time
 
 from pyrogram import Client, errors, filters, raw
 from pyrogram.raw.types.messages import StickerSet
-from pyrogram.types import Sticker as Stk
+from pyrogram.types import Message, Sticker as Stk
 from rapidocr_onnxruntime import RapidOCR
 from sqlalchemy import or_, select
 
-from database import DBSession, RecentlyUsed, Sticker
+from config.config import admin
+from database import AutoIndexSticker, DBSession, RecentlyUsed, Sticker
 
 
 def get_sticker_pack_name(client: Client, set_name):
@@ -50,6 +51,16 @@ def parse_stickers(client: Client, set_name):
         __sticker = asyncio.run(Stk._parse(client, stk, {type(i): i for i in stk.attributes}))
         final.append(__sticker)
     return {'title': title, 'count': count, 'short_name': short_name, 'final': final}
+
+
+# 获取自动索引的贴纸包
+def get_auto_indexed_packages(set_name, uid):
+    with DBSession.begin() as session:
+        stmt = select(AutoIndexSticker).filter(
+            AutoIndexSticker.uid == uid,
+            AutoIndexSticker.set_name == set_name
+        )
+        return session.execute(stmt).scalars().one_or_none()
 
 
 # 过滤指定字符开头的内联查询结果
@@ -143,3 +154,12 @@ def rate_limit(request_limit=3, time_limit=60):
         return wrapper
     
     return decorator
+
+
+def is_admin():
+    async def func(_, __, update):
+        if not admin or update.from_user.id == admin:
+            return True
+        return False
+    
+    return filters.create(func)

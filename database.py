@@ -1,4 +1,4 @@
-from sqlalchemy import INTEGER, UniqueConstraint, create_engine
+from sqlalchemy import INTEGER, NUMERIC, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 engine = create_engine('sqlite:///./config/sticker.db',
@@ -52,6 +52,16 @@ class RecentlyUsed(Base):
     __table_args__ = (
         UniqueConstraint('uid', 'sticker_unique_id', name='uix_uid_sticker'),
     )
+
+
+class AutoIndexSticker(Base):
+    # 表的名字
+    __tablename__ = 'AutoIndexSticker'
+    
+    # 表的结构
+    id: Mapped[int] = mapped_column(INTEGER, primary_key=True)
+    uid: Mapped[int]  # 用户id
+    set_name: Mapped[str]  # 贴纸包名
 
 
 Base.metadata.create_all(engine)

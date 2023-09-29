@@ -8,13 +8,13 @@ from sqlalchemy import update
 
 from database import DBSession, Sticker
 from module.find_sticker import load_sticker
-from utils import filter_inline_query_results, get_sticker_id
+from utils import filter_inline_query_results, get_sticker_id, is_admin
 
 NEW_TAG = {}
 
 
 # 编辑贴纸关键词
-@Client.on_inline_query(filters.regex(r'^edit(?!.*https://t\.me/addstickers/\w*).*$'))
+@Client.on_inline_query(filters.regex(r'^edit(?!.*https://t\.me/addstickers/\w*).*$') & is_admin())
 @logger.catch()
 async def edit_sticker(_, inline_query: InlineQuery):
     edit_query = re.sub(r'edit:|edit\s|edit', '', inline_query.query, 1)
@@ -38,7 +38,7 @@ async def edit_sticker(_, inline_query: InlineQuery):
 
 
 # 匹配贴纸包
-@Client.on_inline_query(filters.regex(r'^edit[\s\S]*(https://t.me/addstickers/\w+)'))
+@Client.on_inline_query(filters.regex(r'^edit[\s\S]*(https://t.me/addstickers/\w+)') & is_admin())
 @logger.catch()
 async def edit_sticker_pack(_, inline_query: InlineQuery):
     edit_query = re.sub(r'edit:|edit\s|edit', '', inline_query.query, 1).split(' ')

@@ -4,3 +4,4 @@ loguru
 TgCrypto
 SQLAlchemy
 rapidocr_onnxruntime
+APScheduler
