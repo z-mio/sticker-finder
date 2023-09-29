@@ -34,14 +34,16 @@ git clone https://github.com/z-mio/sticker-finder.git && cd sticker-finder && pi
 **1.3 修改 config.yaml 里的配置信息**
 
 ``` yaml
-api_id = ''  # 在 https://my.telegram.org/apps 获取
-api_hash = ''  # 在 https://my.telegram.org/apps 获取
-bot_token = ''  # 在 https://t.me/BotFather 获取
-
-# 代理支持“socks4”、“socks5”和“http”
-scheme = ''  # 'http'
-hostname = ''  # '127.0.0.1'
-port = ''  # '7890'
+proxy:
+  hostname: '' # '127.0.0.1'
+  port: ''  # '7890'
+  scheme: '' # 'http'
+user:
+  # 默认为null，所有人都可以使用bot，设置之后只有管理员可用
+  admin: null # 填user_id 可以从 https://t.me/getletbot 发送 /get 指令获取
+  api_hash: 123abc # 在 https://my.telegram.org/apps 获取
+  api_id: 123456789 # 在 https://my.telegram.org/apps 获取
+  bot_token: 6108379846:AAH2 # 在 https://t.me/BotFather 获取
 ```
 
 **1.4 打开bot内联模式**
