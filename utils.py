@@ -5,7 +5,7 @@ from time import time
 
 from pyrogram import Client, errors, filters, raw
 from pyrogram.raw.types.messages import StickerSet
-from pyrogram.types import Message, Sticker as Stk
+from pyrogram.types import Sticker as Stk
 from rapidocr_onnxruntime import RapidOCR
 from sqlalchemy import or_, select
 
