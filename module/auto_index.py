@@ -33,7 +33,6 @@ async def set_auto_index(_, callback_query: CallbackQuery):
 
 
 def update(client: Client, i, insert_stacker):
-    print(i)
     set_name = i.set_name
     uid = i.uid
     stk_set = parse_stickers(client, set_name)
