@@ -46,6 +46,13 @@ def help_(client: Client, message: Message):
 @logger.catch()
 def add_sticker(client: Client, message: Message):
     sticker = message.sticker
+    
+    # 如果贴纸不在贴纸包内
+    if not sticker.set_name:
+        sticker.set_name = 'KTagBot'  # KTagBot是bot默认贴纸包 https://t.me/addstickers/KTagBot
+    if not sticker.emoji:
+        sticker.emoji = '😀'
+    
     uid = message.from_user.id
     button = [
         [
