@@ -48,16 +48,16 @@ async def start_del_stickers(client: Client, chosen: ChosenInlineResult):
             )
             if result := session.execute(stmt).scalars().one_or_none():
                 session.delete(result)
-            
+
             # 删除贴纸包
             stmt = select(Sticker).filter(
                 Sticker.set_name == pack_name,
                 Sticker.uid == uid
             )
             result = session.execute(stmt).scalars().all()
-            
+
             [session.delete(s) for s in result]
-        
+
         # 删除单张贴纸
         else:
             stmt = select(Sticker).filter(
@@ -98,19 +98,19 @@ async def start_clear_sticker(_, chosen: ChosenInlineResult):
             AutoIndexSticker.uid == chosen.from_user.id,
         )
         result_a = session.execute(stmt).scalars().all()
-        
+
         # 删除贴纸
         stmt = select(Sticker).filter(
             Sticker.uid == chosen.from_user.id
         )
         result_b = session.execute(stmt).scalars().all()
-        
+
         # 删除最近使用
         stmt = select(RecentlyUsed).filter(
             RecentlyUsed.uid == chosen.from_user.id
         )
         result_c = session.execute(stmt).scalars().all()
         [session.delete(s) for s in result_a + result_b + result_c]
-        
+
         del stmt, result_a, result_b
     return

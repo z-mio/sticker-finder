@@ -1,7 +1,10 @@
-Pyrogram
-PyYAML
-loguru
+Pyrogram~=2.0.106
+PyYAML~=6.0.1
+loguru~=0.7.2
 TgCrypto
-SQLAlchemy
-rapidocr_onnxruntime
-APScheduler
+SQLAlchemy~=2.0.21
+rapidocr-onnxruntime
+APScheduler~=3.10.4
+
+httpx~=0.25.0
+translators~=5.8.7

@@ -2,6 +2,8 @@ import asyncio
 from collections import defaultdict
 from time import time
 
+import httpx
+import translators as ts
 from pyrogram import Client, errors, filters, raw
 from pyrogram.raw.types.messages import StickerSet
 from pyrogram.types import Sticker as Stk
@@ -70,10 +72,10 @@ def filter_inline_query_results(command: str):
     :param command:
     :return:
     """
-    
+
     async def func(_, __, update):
         return update.query.startswith(command)
-    
+
     return filters.create(func, name="InlineQueryResultFilter", commands=command)
 
 
@@ -147,18 +149,58 @@ def rate_limit(request_limit=3, time_limit=60):
                 if requests[user_id] >= request_limit:
                     return message.reply(f'速率限制：{request_limit}张/{time_limit}秒，请稍后再试')  # 超过限制次数,不处理请求
                 requests[user_id] += 1
-            
+
             func(client, message)  # 调用原函数
-        
+
         return wrapper
-    
+
     return decorator
 
 
 def is_admin():
     async def func(_, __, update):
-        if not admin or update.from_user.id == admin:
-            return True
-        return False
-    
+        return not admin or update.from_user.id == admin
+
     return filters.create(func)
+
+
+def azure_img_tag(path):
+    params = {
+        'features': 'tags',
+        'language': 'zh',
+    }
+    with open(path, 'rb') as f:
+        data = {'file': f}
+        response = httpx.post(
+            'https://portal.vision.cognitive.azure.com/api/demo/analyze',
+            params=params,
+            files=data
+        )
+        if response.status_code == 200:
+            response = response.json()
+        else:
+            return []
+        return [i['name'] for i in response['tagsResult']['values']]
+
+
+def azure_img_caption(path):
+    params = {
+        'features': 'caption',
+        'language': 'en',
+    }
+    with open(path, 'rb') as f:
+        data = {'file': f}
+        response = httpx.post(
+            'https://portal.vision.cognitive.azure.com/api/demo/analyze',
+            params=params,
+            files=data
+        )
+        if response.status_code == 200:
+            response = response.json()
+        else:
+            raise Exception('识别失败')
+        text = response['captionResult']['text']
+        try:
+            text = ts.translate_text(text, 'youdao', to_language='zh')
+        finally:
+            return text

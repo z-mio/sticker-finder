@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from config.config import DOWNLOADS_PATH, chat_data
 from database import DBSession, Sticker
 from module.auto_index import build_auto_index_button
-from utils import get_sticker_pack_name, is_admin, ocr_rapid, parse_stickers, rate_limit
+from utils import get_sticker_pack_name, is_admin, ocr_rapid, parse_stickers, rate_limit, azure_img_caption
 
 STICKER_PACK_STATUS = {}
 
@@ -25,10 +25,10 @@ def help_(client: Client, message: Message):
     if not text.startswith('https://t.me/addstickers/'):
         return message.reply('请发送贴纸or贴纸包链接\n教程：[LINK](https://telegra.ph/贴纸收藏夹bot使用教程-09-08)',
                              disable_web_page_preview=True)
-    
+
     if STICKER_PACK_STATUS.get(message.from_user.id):
         return message.reply('当前已有任务，请等完成后再试')
-    
+
     STICKER_PACK_STATUS[message.from_user.id] = True
     try:
         add_sticker_pack(client, message)
@@ -46,13 +46,13 @@ def help_(client: Client, message: Message):
 @logger.catch()
 def add_sticker(client: Client, message: Message):
     sticker = message.sticker
-    
+
     # 如果贴纸不在贴纸包内
     if not sticker.set_name:
         sticker.set_name = 'KTagBot'  # KTagBot是bot默认贴纸包 https://t.me/addstickers/KTagBot
     if not sticker.emoji:
         sticker.emoji = '😀'
-    
+
     uid = message.from_user.id
     button = [
         [
@@ -66,20 +66,20 @@ def add_sticker(client: Client, message: Message):
                                  switch_inline_query_current_chat=f'edit https://t.me/addstickers/{sticker.set_name}\000'),
             InlineKeyboardButton('删除贴纸包',
                                  switch_inline_query_current_chat=f'del https://t.me/addstickers/{sticker.set_name}\000')
-        
+
         ],
         [
             build_auto_index_button(sticker.set_name, uid)
         ]
-    
+
     ]
     text = '**标签：**`{tag}`\n**Emoji：**`{emoji}`\n**贴纸包：**`{title}` | `{set_name}`'
     # 如果贴纸已经存在就发送贴纸信息
-    
+
     if stk := sticker_exist(uid, sticker.file_unique_id):
         text = f"{text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)}\n**使用次数：**`{stk.usage_count + 1}`"
         return message.reply(text, reply_markup=InlineKeyboardMarkup(button))
-    
+
     else:
         msg: Message = message.reply('添加中...', disable_notification=True)
         try:
@@ -90,7 +90,7 @@ def add_sticker(client: Client, message: Message):
             return msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
         except LoadImageError:
             return msg.edit('OCR识别失败，可能是贴纸下载错误')
-        
+
         text = f'✅添加成功!\n{text.format(tag=stk["tag"], emoji=stk["emoji"], title=stk["title"], set_name=stk["set_name"])}'
         msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
     del stk, uid, sticker, text, button
@@ -102,7 +102,7 @@ def add_sticker_pack(client: Client, message: Message):
     set_name = message.text.replace('https://t.me/addstickers/', '')
     stk_pack = parse_stickers(client, set_name)
     uid = message.from_user.id
-    
+
     a_button = [
         InlineKeyboardButton('查看贴纸包', switch_inline_query_current_chat=stk_pack['short_name']),
         InlineKeyboardButton('编辑贴纸包', switch_inline_query_current_chat=f'edit {message.text}\000'),
@@ -157,11 +157,11 @@ def download_sticker(client: Client, sticker_id: str):
     path = DOWNLOADS_PATH.joinpath(f'{sticker_id[:5]}_{time.time():.0f}.png')
     path = client.download_media(sticker_id, path)
     try:
-        ocr = ocr_rapid(path)
+        tag_list = ocr_rapid(path)
     except LoadImageError:
         tag = 'None'
     else:
-        tag = ''.join(ocr) or "None"
+        tag = ''.join(tag_list) or azure_img_caption(path)
     chat_data[f'ocrTag_{sticker_id}'] = tag
     os.remove(path)
     del tag, path
@@ -197,7 +197,7 @@ def create_sticker_data(client: Client, uid: int, tag: List[str], sticker: Stk):
         stmt = select(Sticker).filter(Sticker.set_name == sticker.set_name, Sticker.uid == uid)
         title = session.execute(stmt).scalars().first()
         title = title.title if title else get_sticker_pack_name(client, sticker.set_name)
-    
+
     stk_ = {
         'uid': uid,
         'tag': tag,
