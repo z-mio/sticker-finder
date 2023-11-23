@@ -1,10 +1,12 @@
 from sqlalchemy import INTEGER, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-engine = create_engine('sqlite:///./config/sticker.db',
-                       connect_args={'check_same_thread': False},
-                       pool_size=0,
-                       echo=False)
+engine = create_engine(
+    "sqlite:///./config/sticker.db",
+    connect_args={"check_same_thread": False},
+    pool_size=0,
+    echo=False,
+)
 
 DBSession = sessionmaker(bind=engine)
 
@@ -15,7 +17,7 @@ class Base(DeclarativeBase):
 
 class Sticker(Base):
     # 表的名字
-    __tablename__ = 'sticker'
+    __tablename__ = "sticker"
 
     # 表的结构
     id: Mapped[int] = mapped_column(INTEGER, primary_key=True)
@@ -32,14 +34,14 @@ class Sticker(Base):
 
     # 复合唯一约束
     __table_args__ = (
-        UniqueConstraint('uid', 'sticker_unique_id', name='uix_uid_sticker'),
+        UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),
     )
 
 
 # 最近使用
 class RecentlyUsed(Base):
     # 表的名字
-    __tablename__ = 'RecentlyUsed'
+    __tablename__ = "RecentlyUsed"
 
     # 表的结构
     id: Mapped[int] = mapped_column(INTEGER, primary_key=True)
@@ -50,13 +52,13 @@ class RecentlyUsed(Base):
 
     # 复合唯一约束
     __table_args__ = (
-        UniqueConstraint('uid', 'sticker_unique_id', name='uix_uid_sticker'),
+        UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),
     )
 
 
 class AutoIndexSticker(Base):
     # 表的名字
-    __tablename__ = 'AutoIndexSticker'
+    __tablename__ = "AutoIndexSticker"
 
     # 表的结构
     id: Mapped[int] = mapped_column(INTEGER, primary_key=True)
