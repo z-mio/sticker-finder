@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict
+from pathlib import Path
 from time import time
 
 import httpx
@@ -17,8 +18,11 @@ from database import AutoIndexSticker, DBSession, RecentlyUsed, Sticker
 def get_sticker_pack_name(client: Client, set_name):
     try:
         info: StickerSet = client.invoke(
-            raw.functions.messages.GetStickerSet(stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
-                                                 hash=0))
+            raw.functions.messages.GetStickerSet(
+                stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
+                hash=0,
+            )
+        )
     except errors.StickersetInvalid:
         return []
     return info.set.title
@@ -28,8 +32,11 @@ def get_sticker_pack_name(client: Client, set_name):
 async def async_get_sticker_pack_name(client: Client, set_name):
     try:
         info: StickerSet = await client.invoke(
-            raw.functions.messages.GetStickerSet(stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
-                                                 hash=0))
+            raw.functions.messages.GetStickerSet(
+                stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
+                hash=0,
+            )
+        )
     except errors.StickersetInvalid:
         return []
     return info.set.title
@@ -39,8 +46,11 @@ async def async_get_sticker_pack_name(client: Client, set_name):
 def parse_stickers(client: Client, set_name):
     try:
         info: StickerSet = client.invoke(
-            raw.functions.messages.GetStickerSet(stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
-                                                 hash=0))
+            raw.functions.messages.GetStickerSet(
+                stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
+                hash=0,
+            )
+        )
     except errors.StickersetInvalid:
         return []
     documents = info.documents
@@ -49,17 +59,18 @@ def parse_stickers(client: Client, set_name):
     count = info.set.count
     short_name = info.set.short_name
     for stk in documents:
-        __sticker = asyncio.run(Stk._parse(client, stk, {type(i): i for i in stk.attributes}))
+        __sticker = asyncio.run(
+            Stk._parse(client, stk, {type(i): i for i in stk.attributes})
+        )
         final.append(__sticker)
-    return {'title': title, 'count': count, 'short_name': short_name, 'final': final}
+    return {"title": title, "count": count, "short_name": short_name, "final": final}
 
 
 # 获取自动索引的贴纸包
 def get_auto_indexed_packages(set_name, uid):
     with DBSession.begin() as session:
         stmt = select(AutoIndexSticker).filter(
-            AutoIndexSticker.uid == uid,
-            AutoIndexSticker.set_name == set_name
+            AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == set_name
         )
         return session.execute(stmt).scalars().one_or_none()
 
@@ -81,13 +92,15 @@ def filter_inline_query_results(command: str):
 
 def stick_find(query, uid) -> list[Sticker]:
     if query:
-        stmt = select(Sticker).filter(or_(
-            Sticker.tag.ilike(f"%{query}%"),
-            Sticker.emoji.ilike(f"%{query}%"),
-            Sticker.title.ilike(f"%{query}%"),
-            Sticker.set_name == query,
-            Sticker.sticker_unique_id == query
-        ), Sticker.uid == uid
+        stmt = select(Sticker).filter(
+            or_(
+                Sticker.tag.ilike(f"%{query}%"),
+                Sticker.emoji.ilike(f"%{query}%"),
+                Sticker.title.ilike(f"%{query}%"),
+                Sticker.set_name == query,
+                Sticker.sticker_unique_id == query,
+            ),
+            Sticker.uid == uid,
         )
     else:
         stmt = select(Sticker).filter(Sticker.uid == uid)
@@ -98,7 +111,11 @@ def stick_find(query, uid) -> list[Sticker]:
 
 
 def recently_used_find(uid) -> list[Sticker]:
-    stmt = select(RecentlyUsed).filter(RecentlyUsed.uid == uid).order_by(RecentlyUsed.time.asc())
+    stmt = (
+        select(RecentlyUsed)
+        .filter(RecentlyUsed.uid == uid)
+        .order_by(RecentlyUsed.time.asc())
+    )
     session = DBSession()
     return session.execute(stmt).scalars().all()
 
@@ -122,14 +139,14 @@ def recently_used_find(uid) -> list[Sticker]:
 rapid_ocr = RapidOCR()
 
 
-def ocr_rapid(path):
+def ocr_rapid(path) -> list[None | str]:
     result, _ = rapid_ocr(path, text_score=0.4, use_angle_cls=False)
     return [i[1] for i in result] if result else []
 
 
-def get_sticker_id(sid: str):
+def get_sticker_id(sid: str) -> str:
     i = sid.split("_")
-    return '_'.join(i[1:]) if i[1:] else i[0]
+    return "_".join(i[1:]) if i[1:] else i[0]
 
 
 requests = defaultdict(int)
@@ -147,7 +164,9 @@ def rate_limit(request_limit=3, time_limit=60):
                 last_request_time[user_id] = current_time
             else:
                 if requests[user_id] >= request_limit:
-                    return message.reply(f'速率限制：{request_limit}张/{time_limit}秒，请稍后再试')  # 超过限制次数,不处理请求
+                    return message.reply(
+                        f"速率限制：{request_limit}张/{time_limit}秒，请稍后再试"
+                    )  # 超过限制次数,不处理请求
                 requests[user_id] += 1
 
             func(client, message)  # 调用原函数
@@ -164,43 +183,43 @@ def is_admin():
     return filters.create(func)
 
 
-def azure_img_tag(path):
+def azure_img_tag(path: str | Path) -> str:
     params = {
-        'features': 'tags',
-        'language': 'zh',
+        "features": "tags",
+        "language": "zh",
     }
-    with open(path, 'rb') as f:
-        data = {'file': f}
+    with open(path, "rb") as f:
+        data = {"file": f}
         response = httpx.post(
-            'https://portal.vision.cognitive.azure.com/api/demo/analyze',
+            "https://portal.vision.cognitive.azure.com/api/demo/analyze",
             params=params,
-            files=data
+            files=data,
         )
         if response.status_code == 200:
             response = response.json()
         else:
             return []
-        return [i['name'] for i in response['tagsResult']['values']]
+        return [i["name"] for i in response["tagsResult"]["values"]]
 
 
-def azure_img_caption(path):
+def azure_img_caption(path: str | Path) -> str:
     params = {
-        'features': 'caption',
-        'language': 'en',
+        "features": "caption",
+        "language": "en",
     }
-    with open(path, 'rb') as f:
-        data = {'file': f}
+    with open(path, "rb") as f:
+        data = {"file": f}
         response = httpx.post(
-            'https://portal.vision.cognitive.azure.com/api/demo/analyze',
+            "https://portal.vision.cognitive.azure.com/api/demo/analyze",
             params=params,
-            files=data
+            files=data,
         )
         if response.status_code == 200:
             response = response.json()
         else:
-            raise Exception('识别失败')
-        text = response['captionResult']['text']
+            raise Exception("识别失败")
+        text = response["captionResult"]["text"]
         try:
-            text = ts.translate_text(text, 'youdao', to_language='zh')
+            text = ts.translate_text(text, "youdao", to_language="zh")
         finally:
             return text
