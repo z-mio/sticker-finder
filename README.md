@@ -11,7 +11,7 @@
 **使用教程：[LINK](https://telegra.ph/%E8%B4%B4%E7%BA%B8%E6%94%B6%E8%97%8F%E5%A4%B9bot%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B-09-08)**  
 **体验一下：[贴纸收藏夹](https://t.me/KTagbot)**
 
-<img src="./img/search.gif"  width="500" alt="使用演示"/>
+<img src="https://bu.dusays.com/2023/11/28/6565ea906b765.gif"  width="500" alt="使用演示"/>
 
 ---
 
@@ -48,7 +48,7 @@ user:
 
 在 https://t.me/BotFather 新建bot后
 
-<img src="./img/inline.gif" width="400" alt="bot设置"/>
+<img src="https://bu.dusays.com/2023/11/28/6565ea8b2573f.gif" width="400" alt="bot设置"/>
 
 ## 2.运行
 
