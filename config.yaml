@@ -7,3 +7,5 @@ user:
   api_hash: 63a159baff51
   api_id: 123456789
   bot_token: 6108379846:AAH2-gYW7YE
+discern:
+  ocr: azure # azure：使用微软试用接口 ，rapid：使用rapid本地ocr
