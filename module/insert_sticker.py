@@ -18,7 +18,7 @@ from rapidocr_onnxruntime import LoadImageError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from config.config import DOWNLOADS_PATH
+from config.config import DOWNLOADS_PATH, ocr_mode
 from database import DBSession, Sticker
 from module.auto_index import build_auto_index_button
 from utils import (
@@ -28,6 +28,7 @@ from utils import (
     parse_stickers,
     rate_limit,
     azure_img_caption,
+    azure_ocr,
 )
 
 STICKER_PACK_STATUS = {}
@@ -249,7 +250,7 @@ def get_the_first_frame(client: Client, sticker_id: str) -> tuple[str, str]:
 # 识别tag
 def identify_tag(path: str | Path) -> str:
     try:
-        tag_list = ocr_rapid(path)
+        tag_list = azure_ocr(path) if ocr_mode == "azure" else ocr_rapid(path)
     except LoadImageError:
         tag = "None"
     else:

@@ -40,3 +40,5 @@ scheme = config["proxy"]["scheme"]
 hostname = config["proxy"]["hostname"]
 port = config["proxy"]["port"]
 proxy = f"{scheme}://{hostname}:{str(port)}" if all([scheme, hostname, port]) else None
+# discern
+ocr_mode = config["discern"]["ocr"]
