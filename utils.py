@@ -202,6 +202,7 @@ def azure_img_tag(path: str | Path) -> str:
         return [i["name"] for i in response["tagsResult"]["values"]]
 
 
+# 微软试用接口 图片标题
 def azure_img_caption(path: str | Path) -> str:
     params = {
         "features": "caption",
@@ -223,3 +224,22 @@ def azure_img_caption(path: str | Path) -> str:
             text = ts.translate_text(text, "youdao", to_language="zh")
         finally:
             return text
+
+
+# 微软试用接口 OCR
+def azure_ocr(path: str | Path) -> list[str]:
+    params = {
+        "features": "read",
+    }
+    with open(path, "rb") as f:
+        data = {"file": f}
+        response = httpx.post(
+            "https://portal.vision.cognitive.azure.com/api/demo/analyze",
+            params=params,
+            files=data,
+        )
+        if response.status_code == 200:
+            response = response.json()
+        else:
+            raise Exception("识别失败")
+    return [line["content"] for line in response["readResult"]["pages"][0]["lines"]]
