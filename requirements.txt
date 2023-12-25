@@ -6,6 +6,6 @@ SQLAlchemy~=2.0.21
 rapidocr-onnxruntime
 APScheduler~=3.10.4
 httpx~=0.25.0
-translators~=5.8.7
+translators~=5.8.9
 opencv-python~=4.8.1.78
 pyrlottie~=2023

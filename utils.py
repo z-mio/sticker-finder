@@ -221,7 +221,7 @@ def azure_img_caption(path: str | Path) -> str:
             raise Exception("识别失败")
         text = response["captionResult"]["text"]
         try:
-            text = ts.translate_text(text, "youdao", to_language="zh")
+            text = ts.translate_text(text, "google", to_language="zh")
         finally:
             return text
 
