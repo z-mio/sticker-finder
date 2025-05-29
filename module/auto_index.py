@@ -43,6 +43,8 @@ def update(client: Client, i, insert_stacker):
     set_name = i.set_name
     uid = i.uid
     stk_set = parse_stickers(client, set_name)
+    if not stk_set:
+        return
     stks: list[Sticker] = stk_set["final"]
     existing_stickers = [i.sticker_unique_id for i in stick_find(set_name, uid)]
     for s in stks:
