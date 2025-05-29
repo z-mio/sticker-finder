@@ -52,7 +52,7 @@ def parse_stickers(client: Client, set_name):
             )
         )
     except errors.StickersetInvalid:
-        return []
+        return None
     documents = info.documents
     final = []
     title = info.set.title
@@ -161,7 +161,7 @@ def rate_limit(request_limit=3, time_limit=60):
             current_time = time()
             if current_time - last_request_time[user_id] > time_limit:
                 requests[user_id] = 1
-                last_request_time[user_id] = current_time
+                last_request_time[user_id] = int(current_time)
             else:
                 if requests[user_id] >= request_limit:
                     return message.reply(
@@ -183,7 +183,7 @@ def is_admin():
     return filters.create(func)
 
 
-def azure_img_tag(path: str | Path) -> str:
+def azure_img_tag(path: str | Path) -> list:
     params = {
         "features": "tags",
         "language": "zh",
@@ -224,22 +224,3 @@ def azure_img_caption(path: str | Path) -> str:
             text = ts.translate_text(text, "google", to_language="zh")
         finally:
             return text
-
-
-# 微软试用接口 OCR
-def azure_ocr(path: str | Path) -> list[str]:
-    params = {
-        "features": "read",
-    }
-    with open(path, "rb") as f:
-        data = {"file": f}
-        response = httpx.post(
-            "https://portal.vision.cognitive.azure.com/api/demo/analyze",
-            params=params,
-            files=data,
-        )
-        if response.status_code == 200:
-            response = response.json()
-        else:
-            raise Exception("识别失败")
-    return [line["content"] for line in response["readResult"]["pages"][0]["lines"]]
