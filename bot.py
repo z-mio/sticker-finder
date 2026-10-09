@@ -47,7 +47,8 @@ class Bot(Client):
 
     async def stop(self, *args: Any, **kwargs: Any) -> Client:
         ws.exit_flag = True
-        scheduler.shutdown()
+        if scheduler.running:
+            scheduler.shutdown()
         await super().stop(*args, **kwargs)
         return self
 
