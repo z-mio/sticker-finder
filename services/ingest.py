@@ -1,11 +1,9 @@
-import asyncio
 from datetime import datetime
 from typing import Any, cast
 
 from pyrogram import Client
 from pyrogram.types import Sticker as Stk
 
-from core.config import bs
 from db import get_session
 from db.models.sticker import Sticker
 from log import logger
@@ -14,9 +12,6 @@ from repo.sticker import StickerRepo
 from utils.ai import recognize_sticker
 from utils.media import sticker_to_image
 from utils.telegram import get_sticker_pack_name
-
-# 下载/转码/识别 全局并发上限
-_recognize_semaphore = asyncio.Semaphore(bs.ocr_concurrency)
 
 _SUPPORTED_MIME = ("image/webp", "video/webm", "application/x-tgsticker")
 
@@ -31,10 +26,7 @@ async def get_tag(client: Client, sticker: Stk) -> str | None:
     if sticker.mime_type not in _SUPPORTED_MIME:
         return None
     try:
-        async with (
-            _recognize_semaphore,
-            sticker_to_image(client, sticker.file_id, sticker.mime_type) as image,
-        ):
+        async with sticker_to_image(client, sticker.file_id, sticker.mime_type) as image:
             tag = await recognize_sticker(image)
     except Exception:
         logger.exception(f"贴纸识别失败: {sticker.file_unique_id}")
