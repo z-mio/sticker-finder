@@ -15,6 +15,9 @@ class AutoIndexRepo:
         stmt = select(AutoIndexSticker).where(AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == set_name)
         return cast(AutoIndexSticker | None, await self._session.scalar(stmt))
 
+    async def get_by_id(self, record_id: int) -> AutoIndexSticker | None:
+        return cast(AutoIndexSticker | None, await self._session.get(AutoIndexSticker, record_id))
+
     async def list_all(self) -> Sequence[AutoIndexSticker]:
         result = await self._session.scalars(select(AutoIndexSticker))
         return result.all()

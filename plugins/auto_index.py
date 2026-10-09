@@ -1,20 +1,22 @@
 import asyncio
+import time
 from typing import Any, cast
 
 from pyrogram import Client, filters
-from pyrogram.errors import RPCError
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
 
+from core.task_queue import task_queue
 from db import get_session
 from db.models.auto_index import AutoIndexSticker
 from log import logger
+from repo.ingest import IngestRepo
 from repo.sticker import StickerRepo
 from services.auto_index import AutoIndexService
-from services.ingest import insert_sticker
+from services.ingest import StickerSource
 from utils.filters import is_admin
 from utils.telegram import parse_stickers
 
@@ -43,6 +45,9 @@ async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
 async def update(client: Client, i: AutoIndexSticker) -> None:
     set_name = i.set_name
     uid = i.uid
+    async with get_session() as session:
+        if await IngestRepo(session).has_active_auto_job(i.id):
+            return
     stk_set = await parse_stickers(client, set_name, i.hash or 0)
     if stk_set is None:
         logger.debug(f"自动索引贴纸包 {set_name} 不存在或已删除")
@@ -51,39 +56,27 @@ async def update(client: Client, i: AutoIndexSticker) -> None:
         return
     async with get_session() as session:
         existing = set(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
-    failed = 0
-    for s in stk_set.stickers:
-        if s.file_unique_id in existing:
-            continue
-        stk = await insert_sticker(client, uid, s, stk_set.title)
-        if stk is None:
-            failed += 1
-            continue
-        button = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        f"标签：{stk['tag']}",
-                        switch_inline_query_current_chat=f"{stk['sticker_unique_id']}",
-                    )
-                ],
-                [InlineKeyboardButton("新贴纸|已自动索引", url=f"t.me/addstickers/{set_name}")],
-            ]
-        )
-        # 通知失败不影响已插入的贴纸, 也不计入 failed
-        try:
-            await client.send_sticker(chat_id=uid, sticker=s.file_id, reply_markup=button)
-        except RPCError as e:
-            logger.warning(f"自动索引通知发送失败: {e}")
-
-    if failed:
-        # 有识别失败的贴纸就不更新 hash, 下次运行会重试
-        logger.warning(f"自动索引贴纸包 {set_name} 有 {failed} 张贴纸识别失败，未更新 hash")
+    sources = [StickerSource.from_sticker(s) for s in stk_set.stickers if s.file_unique_id not in existing]
+    if not sources:
+        # 没有新贴纸, 直接写回 hash
+        async with get_session() as session:
+            await AutoIndexService(session).update_hash(i.id, stk_set.hash)
         return
-
-    # 全部处理成功后才写回新 hash
-    async with get_session() as session:
-        await AutoIndexService(session).update_hash(i.id, stk_set.hash)
+    await task_queue.submit(
+        {
+            "kind": "auto",
+            "uid": uid,
+            "set_name": set_name,
+            "title": stk_set.title,
+            "chat_id": None,
+            "message_id": None,
+            "total": len(sources),
+            "auto_index_id": i.id,
+            "target_hash": stk_set.hash,
+            "created_at": time.time(),
+        },
+        sources,
+    )
 
 
 @logger.catch()

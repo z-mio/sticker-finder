@@ -1,3 +1,5 @@
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
@@ -16,72 +18,103 @@ from utils.telegram import get_sticker_pack_name
 _SUPPORTED_MIME = ("image/webp", "video/webm", "application/x-tgsticker")
 
 
+# 入库用的贴纸信息, 可以来自 pyrogram Sticker 或 IngestTask
+@dataclass
+class StickerSource:
+    file_id: str
+    file_unique_id: str
+    mime_type: str | None
+    emoji: str | None
+    set_name: str
+    date: int
+
+    @classmethod
+    def from_sticker(cls, stk: Stk) -> "StickerSource":
+        return cls(
+            file_id=stk.file_id,
+            file_unique_id=stk.file_unique_id,
+            mime_type=stk.mime_type,
+            emoji=stk.emoji,
+            set_name=cast(str, stk.set_name),
+            date=int(cast(datetime, stk.date).timestamp()) if stk.date else int(time.time()),
+        )
+
+
 # 返回tag, 命中识别缓存直接返回; 下载/转换/识别任何一步失败都返回 None
-async def get_tag(client: Client, sticker: Stk) -> str | None:
+async def get_tag(client: Client, source: StickerSource) -> str | None:
     async with get_session() as session:
-        cached = await OcrCacheRepo(session).get(sticker.file_unique_id)
+        cached = await OcrCacheRepo(session).get(source.file_unique_id)
     if cached is not None:
         return cached
 
-    if sticker.mime_type not in _SUPPORTED_MIME:
+    if source.mime_type not in _SUPPORTED_MIME:
         return None
     try:
-        async with sticker_to_image(client, sticker.file_id, sticker.mime_type) as image:
+        async with sticker_to_image(client, source.file_id, source.mime_type) as image:
             tag = await recognize_sticker(image)
     except Exception:
-        logger.exception(f"贴纸识别失败: {sticker.file_unique_id}")
+        logger.exception(f"贴纸识别失败: {source.file_unique_id}")
         return None
 
     # 失败或空结果不缓存
     if not tag:
         return None
     async with get_session() as session:
-        await OcrCacheRepo(session).upsert(sticker.file_unique_id, tag)
+        await OcrCacheRepo(session).upsert(source.file_unique_id, tag)
     return tag
 
 
-async def insert_sticker(client: Client, uid: int, sticker: Stk, title: str | None = None) -> dict | None:
-    tag = await get_tag(client, sticker)
+# 入库一张贴纸, 已存在时直接返回已有数据(幂等), 返回 (数据, 是否新插入), 识别失败返回 (None, False)
+async def insert_sticker(
+    client: Client, uid: int, source: StickerSource, title: str | None = None
+) -> tuple[dict | None, bool]:
+    async with get_session() as session:
+        existing = await StickerRepo(session).get(uid, source.file_unique_id)
+    if existing is not None:
+        return sticker_to_dict(existing), False
+
+    tag = await get_tag(client, source)
     if tag is None:
-        return None
-    stk_ = await create_sticker_data(client, uid, tag, sticker, title)
+        return None, False
+    stk_ = await create_sticker_data(client, uid, tag, source, title)
     async with get_session() as session:
         await StickerRepo(session).add(Sticker(**stk_))
-    return stk_
+    return stk_, True
 
 
-# 批量添加, 返回识别失败未插入的数量
-async def insert_stickers(client: Client, uid: int, stickers: list[Stk], title: str | None = None) -> int:
-    data = []
-    for s in stickers:
-        tag = await get_tag(client, s)
-        if tag is None:
-            continue
-        data.append(Sticker(**await create_sticker_data(client, uid, tag, s, title)))
-    if data:
-        async with get_session() as session:
-            await StickerRepo(session).add_all(data)
-    return len(stickers) - len(data)
+def sticker_to_dict(sticker: Sticker) -> dict[str, Any]:
+    return {
+        "uid": sticker.uid,
+        "tag": sticker.tag,
+        "sticker_id": sticker.sticker_id,
+        "sticker_unique_id": sticker.sticker_unique_id,
+        "sticker_type": sticker.sticker_type,
+        "emoji": sticker.emoji,
+        "set_name": sticker.set_name,
+        "title": sticker.title,
+        "usage_count": sticker.usage_count,
+        "time": sticker.time,
+    }
 
 
 async def create_sticker_data(
-    client: Client, uid: int, tag: str, sticker: Stk, title: str | None = None
+    client: Client, uid: int, tag: str, source: StickerSource, title: str | None = None
 ) -> dict[str, Any]:
     # 优先用户自定义title > 传入的贴纸包title > 在线获取, 都不行就用 set_name
     async with get_session() as session:
-        title = await StickerRepo(session).get_title_by_set(uid, cast(str, sticker.set_name)) or title
+        title = await StickerRepo(session).get_title_by_set(uid, source.set_name) or title
     if not title:
-        title = await get_sticker_pack_name(client, cast(str, sticker.set_name))
+        title = await get_sticker_pack_name(client, source.set_name)
 
     return {
         "uid": uid,
         "tag": tag,
-        "sticker_id": sticker.file_id,
-        "sticker_unique_id": sticker.file_unique_id,
-        "sticker_type": sticker.mime_type,
-        "emoji": sticker.emoji,
-        "set_name": sticker.set_name,
-        "title": title or sticker.set_name,
+        "sticker_id": source.file_id,
+        "sticker_unique_id": source.file_unique_id,
+        "sticker_type": source.mime_type,
+        "emoji": source.emoji,
+        "set_name": source.set_name,
+        "title": title or source.set_name,
         "usage_count": 0,
-        "time": cast(datetime, sticker.date).timestamp(),  # 贴纸添加时间转为时间戳
+        "time": source.date,  # 贴纸添加时间转为时间戳
     }

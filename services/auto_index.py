@@ -26,3 +26,8 @@ class AutoIndexService:
 
     async def update_hash(self, record_id: int, new_hash: int) -> None:
         await self.auto_index.update_hash(record_id, new_hash)
+
+    # 记录还存在才更新 hash
+    async def update_hash_if_exists(self, record_id: int, new_hash: int) -> None:
+        if await self.auto_index.get_by_id(record_id):
+            await self.auto_index.update_hash(record_id, new_hash)

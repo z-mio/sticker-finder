@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models.recently_used import RecentlyUsed
 from db.models.sticker import Sticker
 from repo.auto_index import AutoIndexRepo
+from repo.ingest import IngestRepo
 from repo.recently_used import RecentlyUsedRepo
 from repo.sticker import StickerRepo
 
@@ -15,6 +16,7 @@ class StickerService:
         self.stickers = StickerRepo(session)
         self.recently_used = RecentlyUsedRepo(session)
         self.auto_index = AutoIndexRepo(session)
+        self.ingest = IngestRepo(session)
 
     async def get(self, uid: int, sticker_unique_id: str) -> Sticker | None:
         return await self.stickers.get(uid, sticker_unique_id)
@@ -35,8 +37,9 @@ class StickerService:
         await self.stickers.remove(sticker)
         return True
 
-    # 删除贴纸包: 自动索引 + 相关最近使用 + 所有贴纸
+    # 删除贴纸包: 队列任务 + 自动索引 + 相关最近使用 + 所有贴纸
     async def delete_pack(self, uid: int, set_name: str) -> None:
+        await self.ingest.delete_jobs(uid, set_name)
         if record := await self.auto_index.get(uid, set_name):
             await self.auto_index.remove(record)
         unique_ids = await self.stickers.list_unique_ids_by_set(uid, set_name)
@@ -45,6 +48,7 @@ class StickerService:
 
     # 清空用户的全部数据
     async def clear(self, uid: int) -> None:
+        await self.ingest.delete_jobs_by_uid(uid)
         await self.auto_index.remove_by_uid(uid)
         await self.stickers.remove_by_uid(uid)
         await self.recently_used.remove_by_uid(uid)

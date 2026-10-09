@@ -7,6 +7,7 @@ from pyrogram.handlers import ConnectHandler, DisconnectHandler
 from pyrogram.types import BotCommand
 
 from core.config import bs, ws
+from core.task_queue import task_queue
 from core.watchdog import on_connect, on_disconnect
 from db.engine import close_db
 from db.init import init_db
@@ -46,6 +47,7 @@ class Bot(Client):
         await init_db()
         await super().start(**kwargs)
         self._auto_index_task = asyncio.create_task(auto_index_loop(self))
+        await task_queue.start(self)
         await self.set_menu()
         return self
 
@@ -56,6 +58,7 @@ class Bot(Client):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._auto_index_task
             self._auto_index_task = None
+        await task_queue.stop()
         await super().stop(*args, **kwargs)
         await close_db()
         return self
