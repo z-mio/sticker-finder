@@ -1,11 +1,12 @@
 import asyncio
 import time
-import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
 import cv2
+from openai import OpenAIError
+from PIL import UnidentifiedImageError
 from pyrlottie import FileMap, LottieFile, convMultLottie
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -16,7 +17,6 @@ from pyrogram.types import (
     Message,
 )
 from pyrogram.types import Sticker as Stk
-from rapidocr_onnxruntime import LoadImageError
 from sqlalchemy.exc import IntegrityError
 
 from core.config import bs
@@ -26,15 +26,15 @@ from log import logger
 from plugins.auto_index import build_auto_index_button
 from repo.ocr_cache import OcrCacheRepo
 from repo.sticker import StickerRepo
+from utils.ai import recognize_sticker
 from utils.filters import is_admin
 from utils.lottie import ensure_pyrlottie_exec_bit
-from utils.ocr import ocr_rapid
 from utils.rate_limit import rate_limit
 from utils.telegram import get_sticker_pack_name, parse_stickers
 
 ensure_pyrlottie_exec_bit()
 
-# 下载/转码/OCR 全局并发上限
+# 下载/转码/识别 全局并发上限
 _ocr_semaphore = asyncio.Semaphore(bs.ocr_concurrency)
 
 STICKER_PACK_STATUS: dict[int, bool] = {}
@@ -120,16 +120,15 @@ async def add_sticker(client: Client, message: Message) -> None:
     else:
         msg = cast(Message, await message.reply("添加中...", disable_notification=True))
         try:
-            stk_dict = cast(dict, await insert_stacker(client, uid, sticker))
+            stk_dict = await insert_stacker(client, uid, sticker)
         except IntegrityError:
             stk = cast(Sticker, await sticker_exist(uid, sticker.file_unique_id))
             text = text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)
             await msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
             return
-        except LoadImageError:
-            await msg.edit("OCR识别失败，可能是贴纸下载错误")
+        if stk_dict is None:
+            await msg.edit("识别失败，未添加，请稍后重新发送贴纸")
             return
-
         info = text.format(
             tag=stk_dict["tag"], emoji=stk_dict["emoji"], title=stk_dict["title"], set_name=stk_dict["set_name"]
         )
@@ -153,6 +152,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
     stop_button = [InlineKeyboardButton("停止添加", callback_data="sticker_stop")]
     msg = cast(Message, await message.reply(f"正在添加贴纸包，请稍等|0/{stk_pack['count']}"))
     _stk: list[Stk] = []
+    failed = 0
     t = time.time()
     for i, sticker in enumerate(stk_pack["final"]):
         if not STICKER_PACK_STATUS[uid]:
@@ -160,7 +160,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
             return
         i += 1
         if i % 5 == 0 or i == stk_pack["count"]:
-            await insert_stacker(client, uid, _stk, stk_pack["title"])
+            failed += await insert_stickers(client, uid, _stk, stk_pack["title"])
             _stk.clear()
             await msg.edit(
                 f"正在添加贴纸包，请稍等|{i}/{stk_pack['count']}",
@@ -170,13 +170,15 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
             continue
             # 如果贴纸已经存在就发送贴纸信息
         _stk.append(sticker)
-    await insert_stacker(client, uid, _stk, stk_pack["title"])
+    failed += await insert_stickers(client, uid, _stk, stk_pack["title"])
     text = f"""
 ✅完成！
 贴纸包: `{stk_pack["title"]}`|`{stk_pack["short_name"]}`
 数量: `{stk_pack["count"]}`
 耗时: `{time.time() - t:.2f}s`
 """
+    if failed:
+        text += f"失败: `{failed}` 张（识别失败未添加，重新发送链接可补齐）\n"
     await msg.edit(
         text,
         reply_markup=InlineKeyboardMarkup([a_button, [await build_auto_index_button(set_name, uid)]]),
@@ -199,12 +201,12 @@ async def sticker_exist(uid: int, file_unique_id: str) -> Sticker | None:
 
 # 下载贴纸 获取tag
 # "image/webp", "video/webm", "application/x-tgsticker"
-async def download_sticker(client: Client, sticker_id: str, mime_type: str) -> str:
+async def download_sticker(client: Client, sticker_id: str, mime_type: str) -> str | None:
     async with _ocr_semaphore:
         return await _download_sticker_inner(client, sticker_id, mime_type)
 
 
-async def _download_sticker_inner(client: Client, sticker_id: str, mime_type: str) -> str:
+async def _download_sticker_inner(client: Client, sticker_id: str, mime_type: str) -> str | None:
     i_p: str | None = None
     path: str | None = None
     try:
@@ -272,21 +274,18 @@ async def get_the_first_frame(client: Client, sticker_id: str) -> tuple[str, str
     return i_p, o_p
 
 
-# 识别tag
-async def identify_tag(path: str | Path) -> str:
+# 识别tag, 识别失败或 AI 返回空返回 None
+async def identify_tag(path: str | Path) -> str | None:
     try:
-        tag_list = await ocr_rapid(path)
-    except LoadImageError:
-        tag = "None"
-    else:
-        # 贴纸中没有文字则为空标签, 全角转半角并合并多余空白
-        text = unicodedata.normalize("NFKC", " ".join(tag_list))
-        tag = " ".join(text.split())
-    return tag
+        tag = await recognize_sticker(path)
+    except (OpenAIError, UnidentifiedImageError, OSError) as e:
+        logger.warning(f"贴纸识别失败: {e}")
+        return None
+    return tag or None
 
 
-# 返回tag, 命中 OCR 缓存直接返回
-async def tag_(client: Client, sticker: Stk) -> str:
+# 返回tag, 命中 OCR 缓存直接返回, 失败返回 None
+async def tag_(client: Client, sticker: Stk) -> str | None:
     async with get_session() as session:
         cached = await OcrCacheRepo(session).get(sticker.file_unique_id)
     if cached is not None:
@@ -295,29 +294,37 @@ async def tag_(client: Client, sticker: Stk) -> str:
     tag = (
         await download_sticker(client, sticker.file_id, sticker.mime_type)
         if sticker.mime_type in ["image/webp", "video/webm", "application/x-tgsticker"]
-        else "None"
+        else None
     )
-    # "None" 代表识别失败或不支持的类型, 不缓存
-    if tag != "None":
+    # 失败或不支持的类型不缓存
+    if tag is not None:
         async with get_session() as session:
             await OcrCacheRepo(session).upsert(sticker.file_unique_id, tag)
     return tag
 
 
-async def insert_stacker(client: Client, uid: int, sticker: Stk | list[Stk], title: str | None = None) -> dict | None:
-    if isinstance(sticker, Stk):
-        stk_ = await create_sticker_data(client, uid, await tag_(client, sticker), sticker, title)
+async def insert_stacker(client: Client, uid: int, sticker: Stk, title: str | None = None) -> dict | None:
+    tag = await tag_(client, sticker)
+    if tag is None:
+        return None
+    stk_ = await create_sticker_data(client, uid, tag, sticker, title)
+    async with get_session() as session:
+        await StickerRepo(session).add(Sticker(**stk_))
+    return stk_
+
+
+# 批量添加, 返回识别失败未插入的数量
+async def insert_stickers(client: Client, uid: int, stickers: list[Stk], title: str | None = None) -> int:
+    data = []
+    for s in stickers:
+        tag = await tag_(client, s)
+        if tag is None:
+            continue
+        data.append(Sticker(**await create_sticker_data(client, uid, tag, s, title)))
+    if data:
         async with get_session() as session:
-            await StickerRepo(session).add(Sticker(**stk_))
-        return stk_
-    else:
-        stickers = [
-            Sticker(**await create_sticker_data(client, uid, await tag_(client, sticker[i]), sticker[i], title))
-            for i in range(len(sticker))
-        ]
-        async with get_session() as session:
-            await StickerRepo(session).add_all(stickers)
-    return None
+            await StickerRepo(session).add_all(data)
+    return len(stickers) - len(data)
 
 
 async def create_sticker_data(

@@ -52,10 +52,14 @@ async def update(
     stks: list[Sticker] = stk_set["final"]
     async with get_session() as session:
         existing_stickers = list(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
+    failed = 0
     for s in stks:
         if s.file_unique_id in existing_stickers:
             continue
-        stk = await insert_stacker(client, uid, s, stk_set["title"]) or {}
+        stk = await insert_stacker(client, uid, s, stk_set["title"])
+        if stk is None:
+            failed += 1
+            continue
         button = InlineKeyboardMarkup(
             [
                 [
@@ -68,6 +72,11 @@ async def update(
             ]
         )
         await client.send_sticker(chat_id=uid, sticker=s.file_id, reply_markup=button)
+
+    if failed:
+        # 有识别失败的贴纸就不更新 hash, 下次运行会重试
+        logger.warning(f"自动索引贴纸包 {set_name} 有 {failed} 张贴纸识别失败，未更新 hash")
+        return
 
     # 全部处理成功后才写回新 hash
     async with get_session() as session:
