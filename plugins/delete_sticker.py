@@ -26,7 +26,9 @@ async def del_sticker(client: Client, inline_query: InlineQuery) -> None:
     query = re.sub(r"del:|del\s|del", "", inline_query.query, count=1)
     # 删除贴纸包
     if query.startswith("https://t.me/addstickers/"):
-        title = await get_sticker_pack_name(client, stk_pack_name(query) or "")
+        pack_name = stk_pack_name(query) or ""
+        # 包已不存在时回退显示 set_name
+        title = await get_sticker_pack_name(client, pack_name) or pack_name
         await inline_query.answer(
             results=[
                 InlineQueryResultArticle(
