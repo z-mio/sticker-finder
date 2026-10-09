@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from typing import Any
 
 from pyrogram import Client
@@ -6,12 +7,11 @@ from pyrogram.handlers import ConnectHandler, DisconnectHandler
 from pyrogram.types import BotCommand
 
 from core.config import bs, ws
-from core.scheduler import scheduler
 from core.watchdog import on_connect, on_disconnect
 from db.engine import close_db
 from db.init import init_db
 from log import logger, setup_logging
-from plugins.auto_index import scheduled_indexing_tasks
+from plugins.auto_index import auto_index_loop
 from utils.event_loop import setup_optimized_event_loop
 
 setup_logging(debug=bs.debug)
@@ -38,21 +38,24 @@ class Bot(Client):
             workdir=bs.bot_workdir,
             lang_code="zh",
         )
+        self._auto_index_task: asyncio.Task | None = None
 
     async def start(self, **kwargs: Any) -> Client:
         self.init_watchdog()
         logger.info("初始化数据库...")
         await init_db()
         await super().start(**kwargs)
-        scheduler.start()
-        scheduled_indexing_tasks(self)
+        self._auto_index_task = asyncio.create_task(auto_index_loop(self))
         await self.set_menu()
         return self
 
     async def stop(self, *args: Any, **kwargs: Any) -> Client:
         ws.exit_flag = True
-        if scheduler.running:
-            scheduler.shutdown()
+        if self._auto_index_task is not None:
+            self._auto_index_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._auto_index_task
+            self._auto_index_task = None
         await super().stop(*args, **kwargs)
         await close_db()
         return self

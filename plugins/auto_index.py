@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -9,7 +10,6 @@ from pyrogram.types import (
     Sticker,
 )
 
-from core.scheduler import scheduler
 from db import get_session
 from db.models.auto_index import AutoIndexSticker
 from log import logger
@@ -89,11 +89,10 @@ async def index_sticker(client: Client) -> None:
             logger.exception(f"自动索引贴纸包 {i.set_name} 失败")
 
 
-def scheduled_indexing_tasks(client: Client) -> None:
-    scheduler.add_job(
-        id="auto_index_sticker",
-        func=index_sticker,
-        args=[client],
-        trigger="interval",
-        minutes=10,
-    )
+AUTO_INDEX_INTERVAL = 600  # 秒
+
+
+async def auto_index_loop(client: Client) -> None:
+    while True:
+        await asyncio.sleep(AUTO_INDEX_INTERVAL)
+        await index_sticker(client)
