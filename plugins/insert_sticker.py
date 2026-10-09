@@ -1,11 +1,12 @@
 import asyncio
 import time
-import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
 import cv2
+from openai import OpenAIError
+from PIL import UnidentifiedImageError
 from pyrlottie import FileMap, LottieFile, convMultLottie
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -16,7 +17,6 @@ from pyrogram.types import (
     Message,
 )
 from pyrogram.types import Sticker as Stk
-from rapidocr_onnxruntime import LoadImageError
 from sqlalchemy.exc import IntegrityError
 
 from core.config import bs
@@ -26,9 +26,9 @@ from log import logger
 from plugins.auto_index import build_auto_index_button
 from repo.ocr_cache import OcrCacheRepo
 from repo.sticker import StickerRepo
+from utils.ai import recognize_sticker
 from utils.filters import is_admin
 from utils.lottie import ensure_pyrlottie_exec_bit
-from utils.ocr import ocr_rapid
 from utils.rate_limit import rate_limit
 from utils.telegram import get_sticker_pack_name, parse_stickers
 
@@ -126,10 +126,6 @@ async def add_sticker(client: Client, message: Message) -> None:
             text = text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)
             await msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
             return
-        except LoadImageError:
-            await msg.edit("OCR识别失败，可能是贴纸下载错误")
-            return
-
         info = text.format(
             tag=stk_dict["tag"], emoji=stk_dict["emoji"], title=stk_dict["title"], set_name=stk_dict["set_name"]
         )
@@ -272,17 +268,14 @@ async def get_the_first_frame(client: Client, sticker_id: str) -> tuple[str, str
     return i_p, o_p
 
 
-# 识别tag
+# 识别tag, 识别失败或 AI 返回空都视为 "None"
 async def identify_tag(path: str | Path) -> str:
     try:
-        tag_list = await ocr_rapid(path)
-    except LoadImageError:
-        tag = "None"
-    else:
-        # 贴纸中没有文字则为空标签, 全角转半角并合并多余空白
-        text = unicodedata.normalize("NFKC", " ".join(tag_list))
-        tag = " ".join(text.split())
-    return tag
+        tag = await recognize_sticker(path)
+    except (OpenAIError, UnidentifiedImageError, OSError) as e:
+        logger.warning(f"贴纸识别失败: {e}")
+        return "None"
+    return tag or "None"
 
 
 # 返回tag, 命中 OCR 缓存直接返回

@@ -61,8 +61,16 @@ class BotSettings(BaseSettings):
     bot_workdir: Path = Field(default=Path("sessions"))
     data_dir: Path = Field(default=Path("data"))
     database_url: str = Field(default="")
+    ai_base_url: str = Field(default="https://api.openai.com/v1")
+    """OpenAI 兼容接口地址"""
+    ai_api_key: str
+    ai_model: str
+    ai_timeout: float = Field(default=60, gt=0)
+    """单次请求超时(秒)"""
+    ai_max_retries: int = Field(default=3, ge=0)
+    """失败重试次数(含 429 限流)"""
     ocr_concurrency: int = Field(default=1, ge=1)
-    """同时进行的下载/转码/OCR 任务数"""
+    """同时进行的下载/转码/识别任务数"""
     debug: bool = Field(default=False)
 
     def model_post_init(self, __context: Any) -> None:
