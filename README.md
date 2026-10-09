@@ -35,7 +35,12 @@
 | `BOT_TOKEN` | 在 https://t.me/BotFather 获取   |         |
 | `BOT_PROXY` | Bot 代理, 海外服务器不用填              |         |
 | `DEBUG`     | 调试模式开关，设置为 `true` 启用调试日志      | `false` |
-| `OCR_CONCURRENCY` | 同时进行的下载/转码/OCR 任务数          | `1`     |
+| `OCR_CONCURRENCY` | 同时进行的下载/转码/识别任务数          | `1`     |
+| `AI_BASE_URL` | OpenAI 兼容接口地址                    | `https://api.openai.com/v1` |
+| `AI_API_KEY`  | OpenAI 兼容接口密钥（必填）              |         |
+| `AI_MODEL`    | 识别用视觉模型（必填）                   |         |
+| `AI_TIMEOUT`  | 单次请求超时(秒)                       | `60`    |
+| `AI_MAX_RETRIES` | 失败重试次数（含 429 限流）           | `3`     |
 
 ## 开始部署
 
