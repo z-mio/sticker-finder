@@ -25,9 +25,12 @@ from core.database import DBSession, Sticker
 from log import logger
 from plugins.auto_index import build_auto_index_button
 from utils.filters import is_admin
+from utils.lottie import ensure_pyrlottie_exec_bit
 from utils.ocr import azure_img_caption, ocr_rapid
 from utils.rate_limit import rate_limit
 from utils.telegram import get_sticker_pack_name, parse_stickers
+
+ensure_pyrlottie_exec_bit()
 
 STICKER_PACK_STATUS: dict[int, bool] = {}
 
@@ -180,6 +183,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
 @Client.on_callback_query(filters.regex(r"sticker_stop") & is_admin)
 async def stop_add_sticker(_: Client, callback_query: CallbackQuery) -> None:
     STICKER_PACK_STATUS[callback_query.from_user.id] = False
+    await callback_query.answer()
 
 
 # 判断贴纸是否已存在

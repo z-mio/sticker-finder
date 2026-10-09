@@ -83,7 +83,8 @@ class BotSettings(BaseSettings):
 
     @property
     def downloads_path(self) -> Path:
-        return self.data_dir / "downloads"
+        # kurigram 的 download_media 会把相对路径拼到 workdir 下, 这里返回绝对路径
+        return (self.data_dir / "downloads").resolve()
 
 
 bs = BotSettings()  # type: ignore
