@@ -229,6 +229,9 @@ async def tgs_to_webp(client: Client, sticker_id: str) -> str:
     o_p = f"{i_p}.webp"
     try:
         await convMultLottie([FileMap(LottieFile(i_p), {o_p})], frameSkip=60)
+    except Exception:
+        Path(o_p).unlink(missing_ok=True)
+        raise
     finally:
         Path(i_p).unlink(missing_ok=True)
     return o_p
@@ -249,7 +252,12 @@ async def get_the_first_frame(client: Client, sticker_id: str) -> tuple[str, str
         )
     )
     o_p = f"{i_p}.png"
-    await asyncio.to_thread(_extract_first_frame, i_p, o_p)
+    try:
+        await asyncio.to_thread(_extract_first_frame, i_p, o_p)
+    except Exception:
+        Path(i_p).unlink(missing_ok=True)
+        Path(o_p).unlink(missing_ok=True)
+        raise
 
     return i_p, o_p
 

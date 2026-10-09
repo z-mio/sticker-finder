@@ -19,7 +19,8 @@ if not config.attributes.get("skip_logging_config", False):
     logging.getLogger("alembic").setLevel(logging.INFO)
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", bs.database_url)
+# configparser 会解析 % 插值, 转义后再写入
+config.set_main_option("sqlalchemy.url", bs.database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
