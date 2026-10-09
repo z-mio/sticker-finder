@@ -12,3 +12,4 @@ class AutoIndexSticker(Base):
     id: Mapped[int] = mapped_column(INTEGER, primary_key=True)
     uid: Mapped[int]  # 用户id
     set_name: Mapped[str]  # 贴纸包名
+    hash: Mapped[int | None] = mapped_column(default=None)  # GetStickerSet 返回的哈希
