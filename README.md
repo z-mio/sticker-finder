@@ -14,61 +14,53 @@
 
 <img src="https://github.com/z-mio/sticker-finder/blob/059d5bfcb766f475903ed6016d3efc4be2e7522a/img/search.gif"  width="500" />
 
----
-
-
-## 1.安装
-
-
-**1.1 安装 python3-pip**
-
-```
-apt install python3-pip
-```
-
-
-**1.2 将项目克隆到本地**
-``` 
-git clone https://github.com/z-mio/sticker-finder.git && cd sticker-finder && pip3 install -r requirements.txt
-```
-
-**1.3 修改 config.yaml 里的配置信息**
-
-``` yaml
-proxy:
-  hostname: '' # '127.0.0.1'
-  port: ''  # '7890'
-  scheme: '' # 'http'
-user:
-  # 默认为null，所有人都可以使用bot，设置之后只有管理员可用
-  admin: null # 填user_id 可以从 https://t.me/getletbot 发送 /get 指令获取
-  api_hash: 123abc # 在 https://my.telegram.org/apps 获取
-  api_id: 123456789 # 在 https://my.telegram.org/apps 获取
-  bot_token: 6108379846:AAH2 # 在 https://t.me/BotFather 获取
-discern:
-  ocr: azure # azure：使用微软试用接口 ，rapid：使用rapid本地ocr
-```
-
-**1.4 打开bot内联模式**
+**打开bot内联模式**
 
 在 https://t.me/BotFather 新建bot后
 
 <img src="https://github.com/z-mio/sticker-finder/blob/059d5bfcb766f475903ed6016d3efc4be2e7522a/img/inline.gif" width="400" />
 
+---
 
 
-## 2.运行
+## 环境变量
 
-**前台启动bot**
+将 `.env.example` 文件重命名为 `.env`
 
-``` 
-python3 bot.py
+| 名称          | 描述                            | 默认值     |
+|-------------|-------------------------------|---------|
+| `ADMINS`    | 管理员用户ID，多个用户用逗号分隔，留空则所有人可用             |         |
+| `API_ID`    | 登录 https://my.telegram.org 获取 |         |
+| `API_HASH`  | 登录 https://my.telegram.org 获取 |         |
+| `BOT_TOKEN` | 在 https://t.me/BotFather 获取   |         |
+| `BOT_PROXY` | Bot 代理, 海外服务器不用填              |         |
+| `DEBUG`     | 调试模式开关，设置为 `true` 启用调试日志      | `false` |
+
+## 开始部署
+
+#### Docker (推荐):
+
+**在项目根目录运行:**
+
+```shell
+sudo sh start.sh # 构建并运行 Bot
+# 其他命令:
+sudo sh start.sh -h # 查看帮助
+sudo sh start.sh stop  # 停止 Bot
+sudo sh start.sh restart # 重启 Bot
 ```
 
+#### 直接运行:
 
-**后台启动bot**
+**在项目根目录运行:**
 
-``` 
-nohup python3 bot.py > botlog.log 2>&1 &
+```shell
+# 安装依赖
+apt install python3-pip -y
+pip install uv --break-system-packages
+uv venv --python 3.12
+uv sync
+# 运行 Bot
+uv run bot.py 
 ```
 
