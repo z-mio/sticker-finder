@@ -11,19 +11,18 @@ from pyrogram.types import (
     Message,
 )
 from pyrogram.types import Sticker as Stk
-from sqlalchemy.exc import IntegrityError
 
+from core.task_queue import task_queue
 from db import get_session
 from db.models.sticker import Sticker
 from log import logger
 from plugins.auto_index import build_auto_index_button
+from repo.ingest import IngestRepo
 from repo.sticker import StickerRepo
-from services.ingest import insert_sticker, insert_stickers
+from services.ingest import StickerSource
 from utils.filters import is_admin
 from utils.rate_limit import rate_limit
 from utils.telegram import parse_stickers
-
-STICKER_PACK_STATUS: dict[int, bool] = {}
 
 
 @Client.on_message(filters.text & filters.private & ~filters.inline_keyboard & ~filters.via_bot & is_admin)
@@ -39,18 +38,17 @@ async def help_(client: Client, message: Message) -> None:
 
     assert message.from_user is not None
     uid = message.from_user.id
-    if STICKER_PACK_STATUS.get(uid):
+    async with get_session() as session:
+        busy = await IngestRepo(session).has_active_job(uid, "pack")
+    if busy:
         await message.reply("当前已有任务，请等完成后再试")
         return
 
-    STICKER_PACK_STATUS[uid] = True
     try:
         await add_sticker_pack(client, message, match[1])
     except Exception as e:
         logger.error(e)
         await message.reply(f"添加失败，请重试\n错误：{e}")
-    finally:
-        STICKER_PACK_STATUS[uid] = False
 
 
 # 添加新贴纸
@@ -103,21 +101,19 @@ async def add_sticker(client: Client, message: Message) -> None:
         return
 
     msg = cast(Message, await message.reply("添加中...", disable_notification=True))
-    try:
-        stk_dict = await insert_sticker(client, uid, sticker)
-    except IntegrityError:
-        stk = cast(Sticker, await sticker_exist(uid, sticker.file_unique_id))
-        text = text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)
-        await msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
-        return
-    if stk_dict is None:
-        await msg.edit("识别失败，未添加，请稍后重新发送贴纸")
-        return
-    info = text.format(
-        tag=stk_dict["tag"], emoji=stk_dict["emoji"], title=stk_dict["title"], set_name=stk_dict["set_name"]
+    await task_queue.submit(
+        {
+            "kind": "single",
+            "uid": uid,
+            "set_name": sticker.set_name,
+            "title": None,
+            "chat_id": uid,
+            "message_id": msg.id,
+            "total": 1,
+            "created_at": time.time(),
+        },
+        [StickerSource.from_sticker(sticker)],
     )
-    text = f"✅添加成功!\n{info}"
-    await msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
 
 
 # 添加新贴纸包
@@ -129,12 +125,6 @@ async def add_sticker_pack(client: Client, message: Message, set_name: str) -> N
 
     assert message.from_user is not None
     uid = message.from_user.id
-    a_button = [
-        InlineKeyboardButton("查看贴纸包", switch_inline_query_current_chat=stk_pack.short_name),
-        InlineKeyboardButton("编辑贴纸包", switch_inline_query_current_chat=f"edit {message.text}\000"),
-        InlineKeyboardButton("删除贴纸包", switch_inline_query_current_chat=f"del {message.text}\000"),
-    ]
-    stop_button = [InlineKeyboardButton("停止添加", callback_data="sticker_stop")]
 
     # 已存在和包内重复的贴纸只取一次
     async with get_session() as session:
@@ -148,36 +138,32 @@ async def add_sticker_pack(client: Client, message: Message, set_name: str) -> N
         pending.append(s)
 
     msg = cast(Message, await message.reply(f"正在添加贴纸包，请稍等|0/{stk_pack.count}"))
-    failed = 0
-    t = time.time()
-    done = stk_pack.count - len(pending)
-    for start in range(0, len(pending), 5):
-        if not STICKER_PACK_STATUS[uid]:
-            await msg.edit("已停止添加")
-            return
-        failed += await insert_stickers(client, uid, pending[start : start + 5], stk_pack.title)
-        done = min(done + 5, stk_pack.count)
-        await msg.edit(
-            f"正在添加贴纸包，请稍等|{done}/{stk_pack.count}",
-            reply_markup=InlineKeyboardMarkup([a_button, stop_button]),
-        )
-    text = f"""
-✅完成！
-贴纸包: `{stk_pack.title}`|`{stk_pack.short_name}`
-数量: `{stk_pack.count}`
-耗时: `{time.time() - t:.2f}s`
-"""
-    if failed:
-        text += f"失败: `{failed}` 张（识别失败未添加，重新发送链接可补齐）\n"
-    await msg.edit(
-        text,
-        reply_markup=InlineKeyboardMarkup([a_button, [await build_auto_index_button(set_name, uid)]]),
+    await task_queue.submit(
+        {
+            "kind": "pack",
+            "uid": uid,
+            "set_name": set_name,
+            "title": stk_pack.title,
+            "chat_id": uid,
+            "message_id": msg.id,
+            "total": stk_pack.count,
+            "created_at": time.time(),
+        },
+        [StickerSource.from_sticker(s) for s in pending],
     )
 
 
 @Client.on_callback_query(filters.regex(r"sticker_stop") & is_admin)
 async def stop_add_sticker(_: Client, callback_query: CallbackQuery) -> None:
-    STICKER_PACK_STATUS[callback_query.from_user.id] = False
+    uid = callback_query.from_user.id
+    async with get_session() as session:
+        repo = IngestRepo(session)
+        job = await repo.stop_active_job(uid, "pack")
+        job_id = job.id if job is not None else None
+        if job_id is not None:
+            await repo.delete_pending_tasks(job_id)
+    if job_id is not None:
+        await task_queue.finalize(job_id)
     await callback_query.answer()
 
 
