@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # 清空旧的 RapidOCR 缓存, 让存量贴纸走 AI 识别
+    # 清空旧的 RapidOCR 缓存, 之后添加的贴纸重新走 AI 识别
     inspector = sa.inspect(op.get_bind())
     if inspector.has_table("OcrCache"):
         op.execute(sa.delete(sa.table("OcrCache")))

@@ -26,8 +26,8 @@ _USER_PROMPT = (
 
 # 任意格式转 PNG base64, 透明背景垫白, 缩到 512 内
 def _to_png_b64(path: str | Path) -> str:
-    img: Image.Image = Image.open(path)
-    img = img.convert("RGBA")
+    with Image.open(path) as src:
+        img = src.convert("RGBA")
     bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
     img = Image.alpha_composite(bg, img).convert("RGB")
     img.thumbnail((512, 512))
