@@ -8,6 +8,8 @@ from pyrogram.types import BotCommand
 from core.config import bs, ws
 from core.scheduler import scheduler
 from core.watchdog import on_connect, on_disconnect
+from db.engine import close_db
+from db.init import init_db
 from log import logger, setup_logging
 from plugins.auto_index import scheduled_indexing_tasks
 from utils.event_loop import setup_optimized_event_loop
@@ -39,6 +41,8 @@ class Bot(Client):
 
     async def start(self, **kwargs: Any) -> Client:
         self.init_watchdog()
+        logger.info("初始化数据库...")
+        await init_db()
         await super().start(**kwargs)
         scheduler.start()
         scheduled_indexing_tasks(self)
@@ -50,6 +54,7 @@ class Bot(Client):
         if scheduler.running:
             scheduler.shutdown()
         await super().stop(*args, **kwargs)
+        await close_db()
         return self
 
     def init_watchdog(self) -> None:

@@ -9,11 +9,11 @@ from pyrogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
 )
-from sqlalchemy import update
 
-from core.database import DBSession, Sticker
+from db import get_session
 from log import logger
 from plugins.find_sticker import load_sticker
+from repo.sticker import StickerRepo
 from utils.filters import filter_inline_query_results, is_admin
 from utils.telegram import get_sticker_id
 
@@ -85,29 +85,12 @@ async def edit_tag(_: Client, chosen: ChosenInlineResult) -> None:
     if not new_tag:
         return
     NEW_TAG.pop(chosen.from_user.id)
-    with DBSession.begin() as session:
+    uid = chosen.from_user.id
+    async with get_session() as session:
+        repo = StickerRepo(session)
         # 更改贴纸包标题
         if "https://t.me/addstickers/" in chosen.query:
-            stmt = (
-                update(Sticker)
-                .filter(
-                    Sticker.set_name == chosen.result_id,
-                    Sticker.uid == chosen.from_user.id,
-                )
-                .values(title=new_tag)
-            )
-
+            await repo.update_title_by_set(uid, chosen.result_id, new_tag)
         # 更新标签
         else:
-            stmt = (
-                update(Sticker)
-                .filter(
-                    Sticker.sticker_unique_id == get_sticker_id(chosen.result_id),
-                    Sticker.uid == chosen.from_user.id,
-                )
-                .values(tag=new_tag)
-            )
-
-        session.execute(stmt)
-    del session, new_tag, stmt
-    return
+            await repo.update_tag(uid, get_sticker_id(chosen.result_id), new_tag)

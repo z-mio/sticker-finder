@@ -14,6 +14,17 @@ async def _is_admin(_: object, __: Client, update: Update) -> bool:
 
 is_admin = filters.create(_is_admin)
 
+# 内联命令前缀, 通用内联 handler 需要排除这些查询
+INLINE_COMMANDS = ("del", "edit", "clear")
+
+
+async def _is_inline_command(_: object, __: Client, update: Any) -> bool:
+    """查询是否以内联命令开头 (InlineQuery 和 ChosenInlineResult 都适用)"""
+    return bool(update.query and update.query.startswith(INLINE_COMMANDS))
+
+
+is_inline_command = filters.create(_is_inline_command)
+
 
 def filter_inline_query_results(command: str) -> filters.Filter:
     """

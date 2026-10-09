@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy import make_url
 
 
 class WatchdogSettings(BaseSettings):
@@ -59,12 +60,19 @@ class BotSettings(BaseSettings):
     bot_proxy: str | None = Field(default=None)
     bot_workdir: Path = Field(default=Path("sessions"))
     data_dir: Path = Field(default=Path("data"))
+    database_url: str = Field(default="")
     debug: bool = Field(default=False)
 
     def model_post_init(self, __context: Any) -> None:
         """模型初始化后的操作"""
         self.bot_workdir.mkdir(parents=True, exist_ok=True)
         self.downloads_path.mkdir(parents=True, exist_ok=True)
+
+        if not self.database_url:
+            self.database_url = f"sqlite+aiosqlite:///{self.data_dir / 'sticker.db'}"
+        url = make_url(self.database_url)
+        if url.get_backend_name() == "sqlite" and url.database:
+            Path(url.database).parent.mkdir(parents=True, exist_ok=True)
 
     @field_validator("admins", mode="before")
     @classmethod
