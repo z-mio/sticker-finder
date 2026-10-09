@@ -5,8 +5,9 @@ description = "Telegram 贴纸搜索机器人"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.0",
     "apscheduler>=3.10,<4",
-    "httpx>=0.28.1",
     "kurigram>=2.2.3",
     "loguru>=0.7.3",
     "opencv-python>=4.11.0.86",
@@ -15,9 +16,8 @@ dependencies = [
     "pyrlottie>=2024.0.1",
     "python-dotenv>=1.1.0",
     "rapidocr-onnxruntime>=1.4.4",
-    "sqlalchemy>=2.1.4",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1",
     "tgcrypto>=1.2.5",
-    "translators>=6.0.4",
     "uvloop>=0.22.1 ; sys_platform != 'win32'",
     "winloop>=0.3.1 ; sys_platform == 'win32'",
 ]

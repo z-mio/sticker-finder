@@ -9,34 +9,32 @@ from pyrogram.types import (
     InlineKeyboardMarkup,
     Sticker,
 )
-from sqlalchemy import select
 
-from core.database import AutoIndexSticker, DBSession
 from core.scheduler import scheduler
+from db import get_session
+from db.models.auto_index import AutoIndexSticker
 from log import logger
+from repo.sticker import StickerRepo
+from services.auto_index import AutoIndexService
 from utils.filters import is_admin
-from utils.queries import get_auto_indexed_packages, stick_find
 from utils.telegram import parse_stickers
 
 
-def build_auto_index_button(set_name: str, uid: int) -> InlineKeyboardButton:
-    result = get_auto_indexed_packages(set_name, uid)
-    return InlineKeyboardButton(f"自动索引新贴纸{'✅' if result else '❎'}", callback_data=f"auto_index_{set_name}")
+async def build_auto_index_button(set_name: str, uid: int) -> InlineKeyboardButton:
+    async with get_session() as session:
+        enabled = await AutoIndexService(session).is_enabled(uid, set_name)
+    return InlineKeyboardButton(f"自动索引新贴纸{'✅' if enabled else '❎'}", callback_data=f"auto_index_{set_name}")
 
 
 @Client.on_callback_query(filters.regex(r"^auto_index_(.+)") & is_admin)
 async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
     set_name = str(callback_query.data).replace("auto_index_", "")
     uid = callback_query.from_user.id
-    result = get_auto_indexed_packages(set_name, uid)
-    with DBSession.begin() as session:
-        if result:
-            session.delete(result)
-        else:
-            session.add(AutoIndexSticker(uid=uid, set_name=set_name))
+    async with get_session() as session:
+        await AutoIndexService(session).toggle(uid, set_name)
     message = cast(Any, callback_query.message)
     button = cast(InlineKeyboardMarkup, message.reply_markup).inline_keyboard
-    button[-1] = [build_auto_index_button(set_name, uid)]
+    button[-1] = [await build_auto_index_button(set_name, uid)]
 
     await message.edit_reply_markup(InlineKeyboardMarkup(button))
     await callback_query.answer()
@@ -53,7 +51,8 @@ async def update(
     if not stk_set:
         return
     stks: list[Sticker] = stk_set["final"]
-    existing_stickers = [i.sticker_unique_id for i in stick_find(set_name, uid)]
+    async with get_session() as session:
+        existing_stickers = list(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
     for s in stks:
         if s.file_unique_id in existing_stickers:
             continue
@@ -76,9 +75,8 @@ async def update(
 async def index_sticker(client: Client) -> None:
     from plugins.insert_sticker import insert_stacker
 
-    with DBSession() as session:
-        stmt = select(AutoIndexSticker)
-        result = session.execute(stmt).scalars().all()
+    async with get_session() as session:
+        result = await AutoIndexService(session).list()
 
     await asyncio.gather(*[update(client, i, insert_stacker) for i in result])
 

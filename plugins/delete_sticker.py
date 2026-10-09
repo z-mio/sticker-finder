@@ -1,5 +1,5 @@
 import re
-from typing import Any, cast
+from typing import cast
 
 from pyrogram import Client, filters
 from pyrogram.types import (
@@ -10,13 +10,13 @@ from pyrogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
 )
-from sqlalchemy import select
 
-from core.database import AutoIndexSticker, DBSession, RecentlyUsed, Sticker
+from db import get_session
 from log import logger
 from plugins.find_sticker import load_sticker
+from services.auto_index import AutoIndexService
+from services.sticker import StickerService
 from utils.filters import filter_inline_query_results, is_admin
-from utils.queries import get_auto_indexed_packages
 from utils.telegram import get_sticker_id, get_sticker_pack_name
 
 
@@ -47,39 +47,25 @@ async def del_sticker(client: Client, inline_query: InlineQuery) -> None:
 async def start_del_stickers(client: Client, chosen: ChosenInlineResult) -> None:
     query = chosen.query
     uid = chosen.from_user.id
-    with DBSession.begin() as session:
+    async with get_session() as session:
         # 删除贴纸包
         if "https://t.me/addstickers/" in query:
-            pack_name = stk_pack_name(query)
-            # 删除自动索引
-            stmt: Any = select(AutoIndexSticker).filter(
-                AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == pack_name
-            )
-            if auto_index := session.execute(stmt).scalars().one_or_none():
-                session.delete(auto_index)
-
-            # 删除贴纸包
-            stmt = select(Sticker).filter(Sticker.set_name == pack_name, Sticker.uid == uid)
-            result = session.execute(stmt).scalars().all()
-
-            for s in result:
-                session.delete(s)
+            pack_name = stk_pack_name(query) or ""
+            await StickerService(session).delete_pack(uid, pack_name)
+            return
 
         # 删除单张贴纸
-        else:
-            stmt = select(Sticker).filter(
-                Sticker.sticker_unique_id == get_sticker_id(chosen.result_id),
-                Sticker.uid == uid,
+        sticker_unique_id = get_sticker_id(chosen.result_id)
+        sticker = await StickerService(session).get(uid, sticker_unique_id)
+        if sticker is None:
+            return
+        if await AutoIndexService(session).is_enabled(uid, sticker.set_name):
+            button = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("删除失败，请先关闭自动索引", callback_data="删除失败")]]
             )
-            result = session.execute(stmt).scalars().one()
-            if get_auto_indexed_packages(result.set_name, chosen.from_user.id):
-                button = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("删除失败，请先关闭自动索引", callback_data="删除失败")]]
-                )
-                await client.edit_inline_reply_markup(cast(str, chosen.inline_message_id), reply_markup=button)
-            else:
-                session.delete(result)
-        return
+            await client.edit_inline_reply_markup(cast(str, chosen.inline_message_id), reply_markup=button)
+        else:
+            await StickerService(session).delete_single(uid, sticker_unique_id)
 
 
 def stk_pack_name(link: str) -> str | None:
@@ -104,22 +90,5 @@ async def clear_sticker(_: Client, inline_query: InlineQuery) -> None:
 @Client.on_chosen_inline_result(filter_inline_query_results("clear"))
 @logger.catch()
 async def start_clear_sticker(_: Client, chosen: ChosenInlineResult) -> None:
-    with DBSession.begin() as session:
-        # 删除自动索引
-        stmt: Any = select(AutoIndexSticker).filter(
-            AutoIndexSticker.uid == chosen.from_user.id,
-        )
-        result_a = session.execute(stmt).scalars().all()
-
-        # 删除贴纸
-        stmt = select(Sticker).filter(Sticker.uid == chosen.from_user.id)
-        result_b = session.execute(stmt).scalars().all()
-
-        # 删除最近使用
-        stmt = select(RecentlyUsed).filter(RecentlyUsed.uid == chosen.from_user.id)
-        result_c = session.execute(stmt).scalars().all()
-        for s in list(result_a) + list(result_b) + list(result_c):
-            session.delete(s)
-
-        del stmt, result_a, result_b
-    return
+    async with get_session() as session:
+        await StickerService(session).clear(chosen.from_user.id)

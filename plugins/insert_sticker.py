@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -17,16 +16,17 @@ from pyrogram.types import (
 )
 from pyrogram.types import Sticker as Stk
 from rapidocr_onnxruntime import LoadImageError
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from core.config import bs
-from core.database import DBSession, Sticker
+from db import get_session
+from db.models.sticker import Sticker
 from log import logger
 from plugins.auto_index import build_auto_index_button
+from repo.sticker import StickerRepo
 from utils.filters import is_admin
 from utils.lottie import ensure_pyrlottie_exec_bit
-from utils.ocr import azure_img_caption, ocr_rapid
+from utils.ocr import ocr_rapid
 from utils.rate_limit import rate_limit
 from utils.telegram import get_sticker_pack_name, parse_stickers
 
@@ -99,12 +99,12 @@ async def add_sticker(client: Client, message: Message) -> None:
                 switch_inline_query_current_chat=f"del https://t.me/addstickers/{sticker.set_name}\000",
             ),
         ],
-        [build_auto_index_button(sticker.set_name, uid)],
+        [await build_auto_index_button(sticker.set_name, uid)],
     ]
     text = "**标签：**`{tag}`\n**Emoji：**`{emoji}`\n**贴纸包：**`{title}` | `{set_name}`"
 
     # 如果贴纸已经存在就发送贴纸信息
-    if stk := sticker_exist(uid, sticker.file_unique_id):
+    if stk := await sticker_exist(uid, sticker.file_unique_id):
         text = (
             f"{text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)}"
             f"\n**使用次数：**`{stk.usage_count + 1}`"
@@ -117,7 +117,7 @@ async def add_sticker(client: Client, message: Message) -> None:
         try:
             stk_dict = cast(dict, await insert_stacker(client, uid, sticker))
         except IntegrityError:
-            stk = cast(Sticker, sticker_exist(uid, sticker.file_unique_id))
+            stk = cast(Sticker, await sticker_exist(uid, sticker.file_unique_id))
             text = text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)
             await msg.edit(text, reply_markup=InlineKeyboardMarkup(button))
             return
@@ -161,7 +161,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
                 f"正在添加贴纸包，请稍等|{i}/{stk_pack['count']}",
                 reply_markup=InlineKeyboardMarkup([a_button, stop_button]),
             )
-        if sticker_exist(uid, sticker.file_unique_id):
+        if await sticker_exist(uid, sticker.file_unique_id):
             continue
             # 如果贴纸已经存在就发送贴纸信息
         _stk.append(sticker)
@@ -174,7 +174,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
 """
     await msg.edit(
         text,
-        reply_markup=InlineKeyboardMarkup([a_button, [build_auto_index_button(set_name, uid)]]),
+        reply_markup=InlineKeyboardMarkup([a_button, [await build_auto_index_button(set_name, uid)]]),
     )
     del _stk, set_name, stk_pack, uid, text
     return
@@ -187,33 +187,36 @@ async def stop_add_sticker(_: Client, callback_query: CallbackQuery) -> None:
 
 
 # 判断贴纸是否已存在
-def sticker_exist(uid: int, file_unique_id: str) -> Sticker | None:
-    with DBSession() as session:
-        stmt = select(Sticker).filter(Sticker.sticker_unique_id == file_unique_id, Sticker.uid == uid)
-        result = session.execute(stmt).scalars().first()
-    del stmt
-    return result
+async def sticker_exist(uid: int, file_unique_id: str) -> Sticker | None:
+    async with get_session() as session:
+        return await StickerRepo(session).get(uid, file_unique_id)
 
 
 # 下载贴纸 获取tag
 # "image/webp", "video/webm", "application/x-tgsticker"
 async def download_sticker(client: Client, sticker_id: str, mime_type: str) -> str:
-    if mime_type == "application/x-tgsticker":
-        path = await tgs_to_webp(client, sticker_id)
-    elif mime_type == "video/webm":
-        i_p, path = await get_the_first_frame(client, sticker_id)
-        os.remove(i_p)
-    else:
-        path = cast(
-            str,
-            await client.download_media(
-                sticker_id,
-                bs.downloads_path.joinpath(f"{sticker_id[:5]}_{time.time():.0f}.png"),
-            ),
-        )
-    tag = await identify_tag(path)
-    os.remove(path)
-    return tag
+    i_p: str | None = None
+    path: str | None = None
+    try:
+        if mime_type == "application/x-tgsticker":
+            path = await tgs_to_webp(client, sticker_id)
+        elif mime_type == "video/webm":
+            i_p, path = await get_the_first_frame(client, sticker_id)
+        else:
+            path = cast(
+                str,
+                await client.download_media(
+                    sticker_id,
+                    bs.downloads_path.joinpath(f"{sticker_id[:5]}_{time.time():.0f}.png"),
+                ),
+            )
+        return await identify_tag(path)
+    finally:
+        # 无论成功还是失败都清理临时文件
+        if i_p:
+            Path(i_p).unlink(missing_ok=True)
+        if path:
+            Path(path).unlink(missing_ok=True)
 
 
 async def tgs_to_webp(client: Client, sticker_id: str) -> str:
@@ -224,8 +227,10 @@ async def tgs_to_webp(client: Client, sticker_id: str) -> str:
         )
     )
     o_p = f"{i_p}.webp"
-    await convMultLottie([FileMap(LottieFile(i_p), {o_p})], frameSkip=60)
-    os.remove(i_p)
+    try:
+        await convMultLottie([FileMap(LottieFile(i_p), {o_p})], frameSkip=60)
+    finally:
+        Path(i_p).unlink(missing_ok=True)
     return o_p
 
 
@@ -256,8 +261,8 @@ async def identify_tag(path: str | Path) -> str:
     except LoadImageError:
         tag = "None"
     else:
-        # 贴纸中没有文字就识别图像内容
-        tag = "".join(tag_list) or await azure_img_caption(path)
+        # 贴纸中没有文字则为空标签
+        tag = "".join(tag_list)
     return tag
 
 
@@ -273,27 +278,27 @@ async def tag_(client: Client, sticker: Stk) -> str:
 async def insert_stacker(client: Client, uid: int, sticker: Stk | list[Stk]) -> dict | None:
     if isinstance(sticker, Stk):
         stk_ = await create_sticker_data(client, uid, await tag_(client, sticker), sticker)
-        with DBSession.begin() as session:
-            session.add(Sticker(**stk_))
+        async with get_session() as session:
+            await StickerRepo(session).add(Sticker(**stk_))
         return stk_
     else:
         stickers = [
             Sticker(**await create_sticker_data(client, uid, await tag_(client, sticker[i]), sticker[i]))
             for i in range(len(sticker))
         ]
-        with DBSession.begin() as session:
-            session.add_all(stickers)
+        async with get_session() as session:
+            await StickerRepo(session).add_all(stickers)
     return None
 
 
 async def create_sticker_data(client: Client, uid: int, tag: str, sticker: Stk) -> dict[str, Any]:
     # 如果用户是自定义title，则会获取自定义的title
-    with DBSession.begin() as session:
-        stmt = select(Sticker).filter(Sticker.set_name == sticker.set_name, Sticker.uid == uid)
-        existing = session.execute(stmt).scalars().first()
-        title = existing.title if existing else await get_sticker_pack_name(client, cast(str, sticker.set_name))
+    async with get_session() as session:
+        title = await StickerRepo(session).get_title_by_set(uid, cast(str, sticker.set_name))
+    if not title:
+        title = await get_sticker_pack_name(client, cast(str, sticker.set_name))
 
-    stk_ = {
+    return {
         "uid": uid,
         "tag": tag,
         "sticker_id": sticker.file_id,
@@ -305,5 +310,3 @@ async def create_sticker_data(client: Client, uid: int, tag: str, sticker: Stk) 
         "usage_count": 0,
         "time": cast(datetime, sticker.date).timestamp(),  # 贴纸添加时间转为时间戳
     }
-    del title, stmt
-    return stk_
