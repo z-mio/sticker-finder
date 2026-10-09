@@ -1,13 +1,12 @@
 import asyncio
-from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from pyrogram import Client, filters
+from pyrogram.errors import RPCError
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    Sticker,
 )
 
 from db import get_session
@@ -15,6 +14,7 @@ from db.models.auto_index import AutoIndexSticker
 from log import logger
 from repo.sticker import StickerRepo
 from services.auto_index import AutoIndexService
+from services.ingest import insert_sticker
 from utils.filters import is_admin
 from utils.telegram import parse_stickers
 
@@ -26,6 +26,7 @@ async def build_auto_index_button(set_name: str, uid: int) -> InlineKeyboardButt
 
 
 @Client.on_callback_query(filters.regex(r"^auto_index_(.+)") & is_admin)
+@logger.catch()
 async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
     set_name = str(callback_query.data).replace("auto_index_", "")
     uid = callback_query.from_user.id
@@ -39,24 +40,22 @@ async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
     await callback_query.answer()
 
 
-async def update(
-    client: Client,
-    i: AutoIndexSticker,
-    insert_stacker: Callable[[Client, int, Any, str | None], Awaitable[dict | None]],
-) -> None:
+async def update(client: Client, i: AutoIndexSticker) -> None:
     set_name = i.set_name
     uid = i.uid
     stk_set = await parse_stickers(client, set_name, i.hash or 0)
-    if not stk_set or stk_set.get("not_modified"):
+    if stk_set is None:
+        logger.debug(f"自动索引贴纸包 {set_name} 不存在或已删除")
         return
-    stks: list[Sticker] = stk_set["final"]
+    if stk_set.not_modified:
+        return
     async with get_session() as session:
-        existing_stickers = list(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
+        existing = set(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
     failed = 0
-    for s in stks:
-        if s.file_unique_id in existing_stickers:
+    for s in stk_set.stickers:
+        if s.file_unique_id in existing:
             continue
-        stk = await insert_stacker(client, uid, s, stk_set["title"])
+        stk = await insert_sticker(client, uid, s, stk_set.title)
         if stk is None:
             failed += 1
             continue
@@ -71,7 +70,11 @@ async def update(
                 [InlineKeyboardButton("新贴纸|已自动索引", url=f"t.me/addstickers/{set_name}")],
             ]
         )
-        await client.send_sticker(chat_id=uid, sticker=s.file_id, reply_markup=button)
+        # 通知失败不影响已插入的贴纸, 也不计入 failed
+        try:
+            await client.send_sticker(chat_id=uid, sticker=s.file_id, reply_markup=button)
+        except RPCError as e:
+            logger.warning(f"自动索引通知发送失败: {e}")
 
     if failed:
         # 有识别失败的贴纸就不更新 hash, 下次运行会重试
@@ -80,20 +83,18 @@ async def update(
 
     # 全部处理成功后才写回新 hash
     async with get_session() as session:
-        await AutoIndexService(session).update_hash(i.id, stk_set["hash"])
+        await AutoIndexService(session).update_hash(i.id, stk_set.hash)
 
 
 @logger.catch()
 async def index_sticker(client: Client) -> None:
-    from plugins.insert_sticker import insert_stacker
-
     async with get_session() as session:
         result = await AutoIndexService(session).list()
 
     # 串行处理, 一个包失败不影响后面的包
     for i in result:
         try:
-            await update(client, i, insert_stacker)
+            await update(client, i)
         except Exception:
             logger.exception(f"自动索引贴纸包 {i.set_name} 失败")
 

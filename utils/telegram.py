@@ -1,12 +1,22 @@
-from typing import Any
+from dataclasses import dataclass, field
 
 from pyrogram import Client, errors, raw
 from pyrogram.raw.types.messages import StickerSet, StickerSetNotModified
 from pyrogram.types import Sticker as Stk
 
 
-# 获取贴纸包名称
-async def get_sticker_pack_name(client: Client, set_name: str) -> Any:
+@dataclass
+class StickerSetInfo:
+    title: str
+    short_name: str
+    count: int
+    hash: int
+    stickers: list[Stk] = field(default_factory=list)
+    not_modified: bool = False
+
+
+# 获取贴纸包名称, 不存在返回 None
+async def get_sticker_pack_name(client: Client, set_name: str) -> str | None:
     try:
         info: StickerSet = await client.invoke(
             raw.functions.messages.GetStickerSet(  # type: ignore[arg-type]
@@ -15,12 +25,12 @@ async def get_sticker_pack_name(client: Client, set_name: str) -> Any:
             )
         )
     except errors.StickersetInvalid:
-        return []
+        return None
     return info.set.title
 
 
-# 获取贴纸中所有贴纸, known_hash 传上次记录的 hash 以利用 StickerSetNotModified
-async def parse_stickers(client: Client, set_name: str, known_hash: int = 0) -> dict | None:
+# 获取贴纸包内所有贴纸, known_hash 传上次记录的 hash 以利用 StickerSetNotModified
+async def parse_stickers(client: Client, set_name: str, known_hash: int = 0) -> StickerSetInfo | None:
     try:
         info: StickerSet | StickerSetNotModified = await client.invoke(
             raw.functions.messages.GetStickerSet(
@@ -31,23 +41,18 @@ async def parse_stickers(client: Client, set_name: str, known_hash: int = 0) -> 
     except errors.StickersetInvalid:
         return None
     if isinstance(info, StickerSetNotModified):
-        return {"not_modified": True}
-    documents = info.documents
-    final = []
-    title = info.set.title
-    count = info.set.count
-    short_name = info.set.short_name
-    for stk in documents:
-        __sticker = await Stk._parse(client, stk, {type(i): i for i in stk.attributes})  # type: ignore[arg-type, union-attr]
-        final.append(__sticker)
-    return {
-        "title": title,
-        "count": count,
-        "short_name": short_name,
-        "final": final,
-        "hash": info.set.hash,
-        "not_modified": False,
-    }
+        return StickerSetInfo(title="", short_name=set_name, count=0, hash=known_hash, not_modified=True)
+    stickers = [
+        await Stk._parse(client, stk, {type(i): i for i in stk.attributes})  # type: ignore[arg-type, union-attr]
+        for stk in info.documents
+    ]
+    return StickerSetInfo(
+        title=info.set.title,
+        short_name=info.set.short_name,
+        count=info.set.count,
+        hash=info.set.hash,
+        stickers=stickers,
+    )
 
 
 def get_sticker_id(sid: str) -> str:
