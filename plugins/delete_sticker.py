@@ -1,6 +1,6 @@
 import re
+from typing import Any, cast
 
-from loguru import logger
 from pyrogram import Client, filters
 from pyrogram.types import (
     ChosenInlineResult,
@@ -12,32 +12,27 @@ from pyrogram.types import (
 )
 from sqlalchemy import select
 
-from database import AutoIndexSticker, DBSession, RecentlyUsed, Sticker
-from module.find_sticker import load_sticker
-from utils import (
-    async_get_sticker_pack_name,
-    filter_inline_query_results,
-    get_auto_indexed_packages,
-    get_sticker_id,
-    is_admin,
-)
+from core.database import AutoIndexSticker, DBSession, RecentlyUsed, Sticker
+from log import logger
+from plugins.find_sticker import load_sticker
+from utils.filters import filter_inline_query_results, is_admin
+from utils.queries import get_auto_indexed_packages
+from utils.telegram import get_sticker_id, get_sticker_pack_name
 
 
-@Client.on_inline_query(filters.regex(r"^del[\s\S]*") & is_admin())
+@Client.on_inline_query(filters.regex(r"^del[\s\S]*") & is_admin)
 @logger.catch()
-async def del_sticker(client: Client, inline_query: InlineQuery):
-    query = re.sub(r"del:|del\s|del", "", inline_query.query, 1)
+async def del_sticker(client: Client, inline_query: InlineQuery) -> None:
+    query = re.sub(r"del:|del\s|del", "", inline_query.query, count=1)
     # 删除贴纸包
     if query.startswith("https://t.me/addstickers/"):
-        title = await async_get_sticker_pack_name(client, stk_pack_name(query))
+        title = await get_sticker_pack_name(client, stk_pack_name(query) or "")
         await inline_query.answer(
             results=[
                 InlineQueryResultArticle(
                     title="点击删除贴纸包",
                     description=f"{title}",
-                    input_message_content=InputTextMessageContent(
-                        f"已删除贴纸包: [{title}]({query})"
-                    ),
+                    input_message_content=InputTextMessageContent(f"已删除贴纸包: [{title}]({query})"),
                 )
             ]
         )
@@ -49,7 +44,7 @@ async def del_sticker(client: Client, inline_query: InlineQuery):
 
 @Client.on_chosen_inline_result(filter_inline_query_results("del"))
 @logger.catch()
-async def start_del_stickers(client: Client, chosen: ChosenInlineResult):
+async def start_del_stickers(client: Client, chosen: ChosenInlineResult) -> None:
     query = chosen.query
     uid = chosen.from_user.id
     with DBSession.begin() as session:
@@ -57,19 +52,18 @@ async def start_del_stickers(client: Client, chosen: ChosenInlineResult):
         if "https://t.me/addstickers/" in query:
             pack_name = stk_pack_name(query)
             # 删除自动索引
-            stmt = select(AutoIndexSticker).filter(
+            stmt: Any = select(AutoIndexSticker).filter(
                 AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == pack_name
             )
-            if result := session.execute(stmt).scalars().one_or_none():
-                session.delete(result)
+            if auto_index := session.execute(stmt).scalars().one_or_none():
+                session.delete(auto_index)
 
             # 删除贴纸包
-            stmt = select(Sticker).filter(
-                Sticker.set_name == pack_name, Sticker.uid == uid
-            )
+            stmt = select(Sticker).filter(Sticker.set_name == pack_name, Sticker.uid == uid)
             result = session.execute(stmt).scalars().all()
 
-            [session.delete(s) for s in result]
+            for s in result:
+                session.delete(s)
 
         # 删除单张贴纸
         else:
@@ -79,25 +73,22 @@ async def start_del_stickers(client: Client, chosen: ChosenInlineResult):
             )
             result = session.execute(stmt).scalars().one()
             if get_auto_indexed_packages(result.set_name, chosen.from_user.id):
-                button = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("删除失败，请先关闭自动索引", "删除失败")]]
-                )
-                await client.edit_inline_reply_markup(
-                    chosen.inline_message_id, reply_markup=button
-                )
+                button = InlineKeyboardMarkup([[InlineKeyboardButton("删除失败，请先关闭自动索引", "删除失败")]])
+                await client.edit_inline_reply_markup(cast(str, chosen.inline_message_id), reply_markup=button)
             else:
                 session.delete(result)
         return
 
 
-def stk_pack_name(link: str) -> str:
+def stk_pack_name(link: str) -> str | None:
     if match := re.search(r"([^/]+)$", link):
         return match[1]
+    return None
 
 
-@Client.on_inline_query(filters.regex("^clear") & is_admin())
+@Client.on_inline_query(filters.regex("^clear") & is_admin)
 @logger.catch()
-async def clear_sticker(_, inline_query: InlineQuery):
+async def clear_sticker(_: Client, inline_query: InlineQuery) -> None:
     await inline_query.answer(
         results=[
             InlineQueryResultArticle(
@@ -110,10 +101,10 @@ async def clear_sticker(_, inline_query: InlineQuery):
 
 @Client.on_chosen_inline_result(filter_inline_query_results("clear"))
 @logger.catch()
-async def start_clear_sticker(_, chosen: ChosenInlineResult):
+async def start_clear_sticker(_: Client, chosen: ChosenInlineResult) -> None:
     with DBSession.begin() as session:
         # 删除自动索引
-        stmt = select(AutoIndexSticker).filter(
+        stmt: Any = select(AutoIndexSticker).filter(
             AutoIndexSticker.uid == chosen.from_user.id,
         )
         result_a = session.execute(stmt).scalars().all()
@@ -125,7 +116,8 @@ async def start_clear_sticker(_, chosen: ChosenInlineResult):
         # 删除最近使用
         stmt = select(RecentlyUsed).filter(RecentlyUsed.uid == chosen.from_user.id)
         result_c = session.execute(stmt).scalars().all()
-        [session.delete(s) for s in result_a + result_b + result_c]
+        for s in list(result_a) + list(result_b) + list(result_c):
+            session.delete(s)
 
         del stmt, result_a, result_b
     return

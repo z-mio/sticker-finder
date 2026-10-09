@@ -1,6 +1,5 @@
 import re
 
-from loguru import logger
 from pyrogram import Client, filters
 from pyrogram.types import (
     ChosenInlineResult,
@@ -12,41 +11,35 @@ from pyrogram.types import (
 )
 from sqlalchemy import update
 
-from database import DBSession, Sticker
-from module.find_sticker import load_sticker
-from utils import filter_inline_query_results, get_sticker_id, is_admin
+from core.database import DBSession, Sticker
+from log import logger
+from plugins.find_sticker import load_sticker
+from utils.filters import filter_inline_query_results, is_admin
+from utils.telegram import get_sticker_id
 
-NEW_TAG = {}
+NEW_TAG: dict[int, str] = {}
 
 
 # 编辑贴纸关键词
-@Client.on_inline_query(
-    filters.regex(r"^edit(?!.*https://t\.me/addstickers/\w*).*$") & is_admin()
-)
+@Client.on_inline_query(filters.regex(r"^edit(?!.*https://t\.me/addstickers/\w*).*$") & is_admin)
 @logger.catch()
-async def edit_sticker(_, inline_query: InlineQuery):
-    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, 1)
-    edit_query = edit_query.split(" ")
+async def edit_sticker(_: Client, inline_query: InlineQuery) -> None:
+    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, count=1)
+    edit_query_parts = edit_query.split(" ")
 
     # @bot edit 新标签
-    if len(edit_query) == 1:
+    if len(edit_query_parts) == 1:
         query = None
-        new_tag = edit_query[0]
+        new_tag = edit_query_parts[0]
         if new_tag == "":
             return await load_sticker(inline_query, query)
     # @bot edit 旧标签 新标签
     else:
-        query = edit_query[0]
-        new_tag = edit_query[1]
+        query = edit_query_parts[0]
+        new_tag = edit_query_parts[1]
 
     button = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    f"新标签：{new_tag}", switch_inline_query_current_chat=new_tag
-                )
-            ]
-        ]
+        [[InlineKeyboardButton(f"新标签：{new_tag}", switch_inline_query_current_chat=new_tag)]]
     )
     await load_sticker(inline_query, query, button)
 
@@ -54,14 +47,12 @@ async def edit_sticker(_, inline_query: InlineQuery):
 
 
 # 匹配贴纸包
-@Client.on_inline_query(
-    filters.regex(r"^edit[\s\S]*(https://t.me/addstickers/\w+)") & is_admin()
-)
+@Client.on_inline_query(filters.regex(r"^edit[\s\S]*(https://t.me/addstickers/\w+)") & is_admin)
 @logger.catch()
-async def edit_sticker_pack(_, inline_query: InlineQuery):
-    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, 1).split(" ")
-    if new_tag := edit_query[1:]:
-        new_tag = "".join(new_tag)
+async def edit_sticker_pack(_: Client, inline_query: InlineQuery) -> None:
+    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, count=1).split(" ")
+    if new_tag_parts := edit_query[1:]:
+        new_tag = "".join(new_tag_parts)
         NEW_TAG[inline_query.from_user.id] = new_tag
 
         # 新标签加入字典，set_name加入内联结果id
@@ -81,9 +72,7 @@ async def edit_sticker_pack(_, inline_query: InlineQuery):
                 InlineQueryResultArticle(
                     title="请输入新贴纸包名",
                     description="格式：@bot edit 贴纸包链接 新贴纸包名",
-                    input_message_content=InputTextMessageContent(
-                        "格式：@bot edit 贴纸包链接 新贴纸包名"
-                    ),
+                    input_message_content=InputTextMessageContent("格式：@bot edit 贴纸包链接 新贴纸包名"),
                 )
             ]
         )
@@ -91,7 +80,7 @@ async def edit_sticker_pack(_, inline_query: InlineQuery):
 
 @Client.on_chosen_inline_result(filter_inline_query_results("edit"))
 @logger.catch()
-async def edit_tag(_, chosen: ChosenInlineResult):
+async def edit_tag(_: Client, chosen: ChosenInlineResult) -> None:
     new_tag = NEW_TAG.get(chosen.from_user.id)
     if not new_tag:
         return
