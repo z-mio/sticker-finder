@@ -53,12 +53,15 @@ def upgrade() -> None:
             sa.Column("emoji", sa.String(), nullable=True),
             sa.Column("set_name", sa.String(), nullable=False),
             sa.Column("date", sa.INTEGER(), nullable=False),
+            sa.Column("attempts", sa.INTEGER(), nullable=False),
             sa.ForeignKeyConstraint(["job_id"], ["IngestJob.id"], ondelete="CASCADE"),
             sa.PrimaryKeyConstraint("id"),
             sa.UniqueConstraint("uid", "file_unique_id", name="uix_task_uid_sticker"),
             sqlite_autoincrement=True,
         )
         op.create_index("ix_IngestTask_job_id", "IngestTask", ["job_id"])
+    elif "attempts" not in [c["name"] for c in inspector.get_columns("IngestTask")]:
+        op.add_column("IngestTask", sa.Column("attempts", sa.INTEGER(), server_default="0", nullable=False))
 
 
 def downgrade() -> None:

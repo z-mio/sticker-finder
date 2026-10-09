@@ -41,3 +41,4 @@ class IngestTask(Base):
     emoji: Mapped[str | None]
     set_name: Mapped[str]
     date: Mapped[int]
+    attempts: Mapped[int] = mapped_column(default=0)  # 识别失败重试次数

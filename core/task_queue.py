@@ -12,9 +12,11 @@ from db import get_session
 from db.models.ingest import IngestJob
 from log import logger
 from repo.ingest import IngestRepo
-from services.ingest import StickerSource, insert_sticker
+from services.ingest import _SUPPORTED_MIME, StickerSource, insert_sticker
 
 WORKERS = min(32, (os.cpu_count() or 1) + 4)
+MAX_RETRIES = 3
+RETRY_DELAYS = (15, 30, 60)
 
 
 # 全局任务队列, 贴纸识别任务统一排队
@@ -22,6 +24,7 @@ class TaskQueue:
     def __init__(self) -> None:
         self._queue: asyncio.Queue[int] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
+        self._retry_handles: list[asyncio.TimerHandle] = []
         self._client: Client | None = None
 
     async def start(self, client: Client) -> None:
@@ -41,6 +44,9 @@ class TaskQueue:
             with contextlib.suppress(asyncio.CancelledError):
                 await w
         self._workers = []
+        for h in self._retry_handles:
+            h.cancel()
+        self._retry_handles = []
 
     # 提交一个 job 及其任务, 返回 job_id; 全是重复任务时直接完成
     async def submit(self, job_fields: dict[str, Any], sources: list[StickerSource]) -> int:
@@ -52,16 +58,17 @@ class TaskQueue:
         for task_id in task_ids:
             self._queue.put_nowait(task_id)
         if not task_ids:
-            await self.finalize(job_id, None)
+            await self.finalize(job_id, None, job_fields["kind"] == "single")
         return job_id
 
     # 任务清空时删除 job 并发送完成消息, 并发下只有一个调用生效
-    async def finalize(self, job_id: int, result: dict | None = None) -> None:
+    # dup_single: kind=single 且 0 个任务入队(贴纸已在别的任务里)
+    async def finalize(self, job_id: int, result: dict | None = None, dup_single: bool = False) -> None:
         async with get_session() as session:
             job = await IngestRepo(session).finalize_job(job_id)
         if job is None:
             return
-        await self._send_final(job, result)
+        await self._send_final(job, result, dup_single)
 
     async def _worker(self) -> None:
         while True:
@@ -71,13 +78,16 @@ class TaskQueue:
             except Exception:
                 logger.exception(f"队列任务 {task_id} 处理失败")
                 # 意外错误计为失败并删除任务, 避免卡死队列
+                job_id = None
                 async with get_session() as session:
                     repo = IngestRepo(session)
                     task = await repo.get_task(task_id)
                     if task is not None:
                         await repo.delete_task(task_id)
                         await repo.inc_counter(task.job_id, failed=True)
-                        await self.finalize(task.job_id)
+                        job_id = task.job_id
+                if job_id is not None:
+                    await self.finalize(job_id)
             finally:
                 self._queue.task_done()
 
@@ -103,11 +113,26 @@ class TaskQueue:
             )
             job_id, uid, kind, title = job.id, task.uid, job.kind, job.title
 
+        errored = False
         try:
             result, is_new = await insert_sticker(self._client, uid, source, title)
         except Exception:
             logger.exception(f"贴纸 {source.file_unique_id} 入库失败")
             result, is_new = None, False
+            errored = True
+
+        # 识别失败回队尾重试(限可识别格式), 超过 MAX_RETRIES 才计失败
+        if not errored and result is None and source.mime_type in _SUPPORTED_MIME:
+            async with get_session() as session:
+                repo = IngestRepo(session)
+                task = await repo.get_task(task_id)
+                if task is not None and task.attempts < MAX_RETRIES:
+                    task.attempts += 1
+                    delay = RETRY_DELAYS[task.attempts - 1]
+                    handle = asyncio.get_running_loop().call_later(delay, self._queue.put_nowait, task_id)
+                    self._retry_handles.append(handle)
+                    logger.info(f"贴纸 {source.file_unique_id} 识别失败, {delay}s 后重试(第 {task.attempts} 次)")
+                    return
 
         async with get_session() as session:
             repo = IngestRepo(session)
@@ -161,7 +186,7 @@ class TaskQueue:
         except RPCError as e:
             logger.debug(f"进度消息更新失败: {e}")
 
-    async def _send_final(self, job: IngestJob, result: dict | None) -> None:
+    async def _send_final(self, job: IngestJob, result: dict | None, dup_single: bool = False) -> None:
         assert self._client is not None
         if job.kind == "single":
             if result is not None:
@@ -170,6 +195,8 @@ class TaskQueue:
                 button = _single_buttons(result)
                 button.inline_keyboard.append([await build_auto_index_button(str(result["set_name"]), job.uid)])
                 await self._edit(job, _info_text(result), button)
+            elif dup_single:
+                await self._edit(job, "该贴纸已在队列中，请稍候")
             else:
                 await self._edit(job, "识别失败，未添加，请稍后重新发送贴纸")
         elif job.kind == "pack":
