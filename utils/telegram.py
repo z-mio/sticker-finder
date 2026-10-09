@@ -1,7 +1,7 @@
 from typing import Any
 
 from pyrogram import Client, errors, raw
-from pyrogram.raw.types.messages import StickerSet
+from pyrogram.raw.types.messages import StickerSet, StickerSetNotModified
 from pyrogram.types import Sticker as Stk
 
 
@@ -19,17 +19,19 @@ async def get_sticker_pack_name(client: Client, set_name: str) -> Any:
     return info.set.title
 
 
-# 获取贴纸中所有贴纸
-async def parse_stickers(client: Client, set_name: str) -> dict | None:
+# 获取贴纸中所有贴纸, known_hash 传上次记录的 hash 以利用 StickerSetNotModified
+async def parse_stickers(client: Client, set_name: str, known_hash: int = 0) -> dict | None:
     try:
-        info: StickerSet = await client.invoke(
-            raw.functions.messages.GetStickerSet(  # type: ignore[arg-type]
+        info: StickerSet | StickerSetNotModified = await client.invoke(
+            raw.functions.messages.GetStickerSet(
                 stickerset=raw.types.InputStickerSetShortName(short_name=set_name),
-                hash=0,
+                hash=known_hash,
             )
         )
     except errors.StickersetInvalid:
         return None
+    if isinstance(info, StickerSetNotModified):
+        return {"not_modified": True}
     documents = info.documents
     final = []
     title = info.set.title
@@ -38,7 +40,14 @@ async def parse_stickers(client: Client, set_name: str) -> dict | None:
     for stk in documents:
         __sticker = await Stk._parse(client, stk, {type(i): i for i in stk.attributes})  # type: ignore[arg-type, union-attr]
         final.append(__sticker)
-    return {"title": title, "count": count, "short_name": short_name, "final": final}
+    return {
+        "title": title,
+        "count": count,
+        "short_name": short_name,
+        "final": final,
+        "hash": info.set.hash,
+        "not_modified": False,
+    }
 
 
 def get_sticker_id(sid: str) -> str:

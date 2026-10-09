@@ -28,5 +28,8 @@ class AutoIndexService:
         if record := await self.auto_index.get(uid, set_name):
             await self.auto_index.remove(record)
 
+    async def update_hash(self, record_id: int, new_hash: int) -> None:
+        await self.auto_index.update_hash(record_id, new_hash)
+
     async def remove_by_uid(self, uid: int) -> None:
         await self.auto_index.remove_by_uid(uid)

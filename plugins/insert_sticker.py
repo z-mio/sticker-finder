@@ -1,5 +1,6 @@
 import asyncio
 import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +24,7 @@ from db import get_session
 from db.models.sticker import Sticker
 from log import logger
 from plugins.auto_index import build_auto_index_button
+from repo.ocr_cache import OcrCacheRepo
 from repo.sticker import StickerRepo
 from utils.filters import is_admin
 from utils.lottie import ensure_pyrlottie_exec_bit
@@ -31,6 +33,9 @@ from utils.rate_limit import rate_limit
 from utils.telegram import get_sticker_pack_name, parse_stickers
 
 ensure_pyrlottie_exec_bit()
+
+# 下载/转码/OCR 全局并发上限
+_ocr_semaphore = asyncio.Semaphore(bs.ocr_concurrency)
 
 STICKER_PACK_STATUS: dict[int, bool] = {}
 
@@ -155,7 +160,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
             return
         i += 1
         if i % 5 == 0 or i == stk_pack["count"]:
-            await insert_stacker(client, uid, _stk)
+            await insert_stacker(client, uid, _stk, stk_pack["title"])
             _stk.clear()
             await msg.edit(
                 f"正在添加贴纸包，请稍等|{i}/{stk_pack['count']}",
@@ -165,7 +170,7 @@ async def add_sticker_pack(client: Client, message: Message) -> None:
             continue
             # 如果贴纸已经存在就发送贴纸信息
         _stk.append(sticker)
-    await insert_stacker(client, uid, _stk)
+    await insert_stacker(client, uid, _stk, stk_pack["title"])
     text = f"""
 ✅完成！
 贴纸包: `{stk_pack["title"]}`|`{stk_pack["short_name"]}`
@@ -195,6 +200,11 @@ async def sticker_exist(uid: int, file_unique_id: str) -> Sticker | None:
 # 下载贴纸 获取tag
 # "image/webp", "video/webm", "application/x-tgsticker"
 async def download_sticker(client: Client, sticker_id: str, mime_type: str) -> str:
+    async with _ocr_semaphore:
+        return await _download_sticker_inner(client, sticker_id, mime_type)
+
+
+async def _download_sticker_inner(client: Client, sticker_id: str, mime_type: str) -> str:
     i_p: str | None = None
     path: str | None = None
     try:
@@ -269,29 +279,40 @@ async def identify_tag(path: str | Path) -> str:
     except LoadImageError:
         tag = "None"
     else:
-        # 贴纸中没有文字则为空标签
-        tag = "".join(tag_list)
+        # 贴纸中没有文字则为空标签, 全角转半角并合并多余空白
+        text = unicodedata.normalize("NFKC", " ".join(tag_list))
+        tag = " ".join(text.split())
     return tag
 
 
-# 返回tag
+# 返回tag, 命中 OCR 缓存直接返回
 async def tag_(client: Client, sticker: Stk) -> str:
-    return (
+    async with get_session() as session:
+        cached = await OcrCacheRepo(session).get(sticker.file_unique_id)
+    if cached is not None:
+        return cached
+
+    tag = (
         await download_sticker(client, sticker.file_id, sticker.mime_type)
         if sticker.mime_type in ["image/webp", "video/webm", "application/x-tgsticker"]
         else "None"
     )
+    # "None" 代表识别失败或不支持的类型, 不缓存
+    if tag != "None":
+        async with get_session() as session:
+            await OcrCacheRepo(session).upsert(sticker.file_unique_id, tag)
+    return tag
 
 
-async def insert_stacker(client: Client, uid: int, sticker: Stk | list[Stk]) -> dict | None:
+async def insert_stacker(client: Client, uid: int, sticker: Stk | list[Stk], title: str | None = None) -> dict | None:
     if isinstance(sticker, Stk):
-        stk_ = await create_sticker_data(client, uid, await tag_(client, sticker), sticker)
+        stk_ = await create_sticker_data(client, uid, await tag_(client, sticker), sticker, title)
         async with get_session() as session:
             await StickerRepo(session).add(Sticker(**stk_))
         return stk_
     else:
         stickers = [
-            Sticker(**await create_sticker_data(client, uid, await tag_(client, sticker[i]), sticker[i]))
+            Sticker(**await create_sticker_data(client, uid, await tag_(client, sticker[i]), sticker[i], title))
             for i in range(len(sticker))
         ]
         async with get_session() as session:
@@ -299,10 +320,12 @@ async def insert_stacker(client: Client, uid: int, sticker: Stk | list[Stk]) -> 
     return None
 
 
-async def create_sticker_data(client: Client, uid: int, tag: str, sticker: Stk) -> dict[str, Any]:
-    # 如果用户是自定义title，则会获取自定义的title
+async def create_sticker_data(
+    client: Client, uid: int, tag: str, sticker: Stk, title: str | None = None
+) -> dict[str, Any]:
+    # 优先用户自定义title > 传入的贴纸包title > 在线获取
     async with get_session() as session:
-        title = await StickerRepo(session).get_title_by_set(uid, cast(str, sticker.set_name))
+        title = await StickerRepo(session).get_title_by_set(uid, cast(str, sticker.set_name)) or title
     if not title:
         title = await get_sticker_pack_name(client, cast(str, sticker.set_name))
 

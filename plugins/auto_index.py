@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -43,12 +42,12 @@ async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
 async def update(
     client: Client,
     i: AutoIndexSticker,
-    insert_stacker: Callable[[Client, int, Any], Awaitable[dict | None]],
+    insert_stacker: Callable[[Client, int, Any, str | None], Awaitable[dict | None]],
 ) -> None:
     set_name = i.set_name
     uid = i.uid
-    stk_set = await parse_stickers(client, set_name)
-    if not stk_set:
+    stk_set = await parse_stickers(client, set_name, i.hash or 0)
+    if not stk_set or stk_set.get("not_modified"):
         return
     stks: list[Sticker] = stk_set["final"]
     async with get_session() as session:
@@ -56,7 +55,7 @@ async def update(
     for s in stks:
         if s.file_unique_id in existing_stickers:
             continue
-        stk = await insert_stacker(client, uid, s) or {}
+        stk = await insert_stacker(client, uid, s, stk_set["title"]) or {}
         button = InlineKeyboardMarkup(
             [
                 [
@@ -70,6 +69,10 @@ async def update(
         )
         await client.send_sticker(chat_id=uid, sticker=s.file_id, reply_markup=button)
 
+    # 全部处理成功后才写回新 hash
+    async with get_session() as session:
+        await AutoIndexService(session).update_hash(i.id, stk_set["hash"])
+
 
 @logger.catch()
 async def index_sticker(client: Client) -> None:
@@ -78,7 +81,12 @@ async def index_sticker(client: Client) -> None:
     async with get_session() as session:
         result = await AutoIndexService(session).list()
 
-    await asyncio.gather(*[update(client, i, insert_stacker) for i in result])
+    # 串行处理, 一个包失败不影响后面的包
+    for i in result:
+        try:
+            await update(client, i, insert_stacker)
+        except Exception:
+            logger.exception(f"自动索引贴纸包 {i.set_name} 失败")
 
 
 def scheduled_indexing_tasks(client: Client) -> None:

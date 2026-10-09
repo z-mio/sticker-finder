@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.auto_index import AutoIndexSticker
@@ -27,6 +27,10 @@ class AutoIndexRepo:
 
     async def remove(self, record: AutoIndexSticker) -> None:
         await self._session.delete(record)
+
+    async def update_hash(self, record_id: int, new_hash: int) -> None:
+        stmt = update(AutoIndexSticker).where(AutoIndexSticker.id == record_id).values(hash=new_hash)
+        await self._session.execute(stmt)
 
     async def remove_by_uid(self, uid: int) -> None:
         stmt = delete(AutoIndexSticker).where(AutoIndexSticker.uid == uid)

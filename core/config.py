@@ -61,6 +61,8 @@ class BotSettings(BaseSettings):
     bot_workdir: Path = Field(default=Path("sessions"))
     data_dir: Path = Field(default=Path("data"))
     database_url: str = Field(default="")
+    ocr_concurrency: int = Field(default=1, ge=1)
+    """同时进行的下载/转码/OCR 任务数"""
     debug: bool = Field(default=False)
 
     def model_post_init(self, __context: Any) -> None:

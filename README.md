@@ -35,6 +35,7 @@
 | `BOT_TOKEN` | 在 https://t.me/BotFather 获取   |         |
 | `BOT_PROXY` | Bot 代理, 海外服务器不用填              |         |
 | `DEBUG`     | 调试模式开关，设置为 `true` 启用调试日志      | `false` |
+| `OCR_CONCURRENCY` | 同时进行的下载/转码/OCR 任务数          | `1`     |
 
 ## 开始部署
 
