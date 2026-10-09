@@ -38,7 +38,7 @@ async def del_sticker(client: Client, inline_query: InlineQuery) -> None:
         )
     # 删除单张贴纸
     else:
-        button = InlineKeyboardMarkup([[InlineKeyboardButton("已删除", "已删除")]])
+        button = InlineKeyboardMarkup([[InlineKeyboardButton("已删除", callback_data="已删除")]])
         await load_sticker(inline_query, query, button)
 
 
@@ -73,7 +73,9 @@ async def start_del_stickers(client: Client, chosen: ChosenInlineResult) -> None
             )
             result = session.execute(stmt).scalars().one()
             if get_auto_indexed_packages(result.set_name, chosen.from_user.id):
-                button = InlineKeyboardMarkup([[InlineKeyboardButton("删除失败，请先关闭自动索引", "删除失败")]])
+                button = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("删除失败，请先关闭自动索引", callback_data="删除失败")]]
+                )
                 await client.edit_inline_reply_markup(cast(str, chosen.inline_message_id), reply_markup=button)
             else:
                 session.delete(result)

@@ -39,6 +39,7 @@ async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
     button[-1] = [build_auto_index_button(set_name, uid)]
 
     await message.edit_reply_markup(InlineKeyboardMarkup(button))
+    await callback_query.answer()
 
 
 async def update(
