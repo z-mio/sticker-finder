@@ -1,14 +1,15 @@
 from sqlalchemy import INTEGER, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from core.config import bs
+
 engine = create_engine(
-    "sqlite:///./config/sticker.db",
+    f"sqlite:///{bs.data_dir / 'sticker.db'}",
     connect_args={"check_same_thread": False},
-    pool_size=0,
     echo=False,
 )
 
-DBSession = sessionmaker(bind=engine)
+DBSession = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
@@ -33,9 +34,7 @@ class Sticker(Base):
     time: Mapped[int]  # 添加时间
 
     # 复合唯一约束
-    __table_args__ = (
-        UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),
-    )
+    __table_args__ = (UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),)
 
 
 # 最近使用
@@ -51,9 +50,7 @@ class RecentlyUsed(Base):
     time: Mapped[int]  # 添加时间
 
     # 复合唯一约束
-    __table_args__ = (
-        UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),
-    )
+    __table_args__ = (UniqueConstraint("uid", "sticker_unique_id", name="uix_uid_sticker"),)
 
 
 class AutoIndexSticker(Base):

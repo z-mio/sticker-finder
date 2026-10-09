@@ -1,36 +1,70 @@
-# -*- coding: UTF-8 -*-
-from loguru import logger
+import asyncio
+from typing import Any
+
 from pyrogram import Client
+from pyrogram.handlers import ConnectHandler, DisconnectHandler
+from pyrogram.types import BotCommand
 
-from config.config import api_hash, api_id, bot_token, hostname, port, scheme
-from module.auto_index import scheduled_indexing_tasks
+from core.config import bs, ws
+from core.scheduler import scheduler
+from core.watchdog import on_connect, on_disconnect
+from log import logger, setup_logging
+from plugins.auto_index import scheduled_indexing_tasks
+from utils.event_loop import setup_optimized_event_loop
 
-logger.add("logs/bot.log", rotation="5 MB")
+setup_logging(debug=bs.debug)
 
-proxy = {
-    "scheme": scheme,  # 支持“socks4”、“socks5”和“http”
-    "hostname": hostname,
-    "port": port,
+setup_optimized_event_loop()
+loop = asyncio.new_event_loop()
+
+COMMANDS = {
+    "start": "开始",
+    "help": "帮助",
 }
 
-plugins = dict(root="module")
 
-app = Client(
-    "my_bot",
-    proxy=proxy if all([scheme, hostname, port]) else None,
-    bot_token=bot_token,
-    api_id=api_id,
-    api_hash=api_hash,
-    plugins=plugins,
-    lang_code="zh",
-)
+class Bot(Client):
+    def __init__(self) -> None:
+        super().__init__(
+            bs.bot_session_name,
+            api_id=bs.api_id,
+            api_hash=bs.api_hash,
+            bot_token=bs.bot_token,
+            plugins={"root": "plugins"},
+            proxy=bs.bot_proxy,
+            loop=loop,
+            workdir=bs.bot_workdir,
+            lang_code="zh",
+        )
 
+    async def start(self, **kwargs: Any) -> Client:
+        self.init_watchdog()
+        await super().start(**kwargs)
+        scheduler.start()
+        scheduled_indexing_tasks(self)
+        await self.set_menu()
+        return self
 
-def main():
-    scheduled_indexing_tasks(app)
-    app.run()
+    async def stop(self, *args: Any, **kwargs: Any) -> Client:
+        ws.exit_flag = True
+        if scheduler.running:
+            scheduler.shutdown()
+        await super().stop(*args, **kwargs)
+        return self
+
+    def init_watchdog(self) -> None:
+        self.add_handler(ConnectHandler(on_connect))
+        self.add_handler(DisconnectHandler(on_disconnect))
+
+    async def set_menu(self) -> None:
+        commands = await self.get_bot_commands()
+        if len(commands) == len(COMMANDS) and all(c.description in str(COMMANDS.values()) for c in commands):
+            logger.debug("菜单无变化, 跳过设置")
+            return
+        await self.set_bot_commands([BotCommand(command=k, description=v) for k, v in COMMANDS.items()])
+        logger.debug(f"菜单已设置: {COMMANDS}")
 
 
 if __name__ == "__main__":
-    logger.info("Bot运行中...")
-    main()
+    bot = Bot()
+    bot.run()

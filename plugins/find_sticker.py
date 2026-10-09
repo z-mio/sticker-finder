@@ -1,27 +1,32 @@
-from loguru import logger
 from pyrogram import Client
 from pyrogram.types import (
+    InlineKeyboardMarkup,
     InlineQuery,
+    InlineQueryResult,
     InlineQueryResultArticle,
     InlineQueryResultCachedSticker,
     InputTextMessageContent,
 )
 
-from utils import is_admin, recently_used_find, stick_find
+from log import logger
+from utils.filters import is_admin
+from utils.queries import recently_used_find, stick_find
 
 
-@Client.on_inline_query(is_admin())
+@Client.on_inline_query(is_admin)
 @logger.catch()
-async def find_sticker(_, inline_query: InlineQuery):
+async def find_sticker(_: Client, inline_query: InlineQuery) -> None:
     query = "%".join(inline_query.query.split(" "))
     await load_sticker(inline_query, query)
 
 
-async def load_sticker(inline_query, query, button=None):
+async def load_sticker(
+    inline_query: InlineQuery, query: str | None, button: InlineKeyboardMarkup | None = None
+) -> None:
     offset = inline_query.offset or 0  # 开始
     if result := stick_find(query, inline_query.from_user.id):
         next_offset = int(offset) + 15  # 结束
-        results = [
+        results: list[InlineQueryResult] = [
             InlineQueryResultCachedSticker(
                 sticker_file_id=i.sticker_id,
                 id=f"a_{i.sticker_unique_id}",

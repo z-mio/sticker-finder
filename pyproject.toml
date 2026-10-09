@@ -1,0 +1,57 @@
+[project]
+name = "sticker-finder"
+version = "0.1.0"
+description = "Telegram 贴纸搜索机器人"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "apscheduler>=3.10,<4",
+    "httpx>=0.28.1",
+    "kurigram>=2.2.3",
+    "loguru>=0.7.3",
+    "opencv-python>=4.11.0.86",
+    "pydantic>=2.12.3",
+    "pydantic-settings>=2.11.0",
+    "pyrlottie>=2024.0.1",
+    "python-dotenv>=1.1.0",
+    "rapidocr-onnxruntime>=1.4.4",
+    "sqlalchemy>=2.1.4",
+    "tgcrypto>=1.2.5",
+    "translators>=6.0.4",
+    "uvloop>=0.22.1 ; sys_platform != 'win32'",
+    "winloop>=0.3.1 ; sys_platform == 'win32'",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle 错误检查
+    "W", # pycodestyle 警告检查
+    "F", # pyflakes 错误检查
+    "I", # isort 导入排序
+    "B", # flake8-bugbear 常见错误检查
+    "C4", # flake8-comprehensions 列表/字典推导式检查
+    "UP", # pyupgrade 自动升级语法
+]
+ignore = [
+    "B008", # 不在参数默认值中执行函数调用
+    "C901", # 函数复杂度过高
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "ruff>=0.16.4",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["./"]
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
