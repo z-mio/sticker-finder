@@ -69,8 +69,6 @@ class BotSettings(BaseSettings):
     """单次请求超时(秒)"""
     ai_max_retries: int = Field(default=3, ge=0)
     """失败重试次数(含 429 限流)"""
-    ocr_concurrency: int = Field(default=1, ge=1)
-    """同时进行的下载/转码/识别任务数"""
     debug: bool = Field(default=False)
 
     def model_post_init(self, __context: Any) -> None:
