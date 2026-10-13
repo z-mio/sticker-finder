@@ -11,7 +11,7 @@ dependencies = [
     "loguru>=0.7.3",
     "openai>=3.26.1",
     "opencv-python>=4.11.0.86",
-    "pillow>=10.4.0",
+    "pillow>=12.3.0",
     "pydantic>=2.12.3",
     "pydantic-settings>=2.11.0",
     "pyrlottie>=2024.0.1",
@@ -55,3 +55,7 @@ warn_unused_ignores = true
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true
+
+[tool.uv]
+# pyrlottie 已停更且锁死 Pillow<11, 强制使用修复了安全漏洞的版本
+override-dependencies = ["pillow>=12.3.0"]
