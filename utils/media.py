@@ -5,13 +5,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import cv2
-from pyrlottie import FileMap, LottieFile, convMultLottie
 from pyrogram import Client
+from rlottie_python import LottieAnimation
 
 from core.config import bs
-from utils.lottie import ensure_pyrlottie_exec_bit
-
-ensure_pyrlottie_exec_bit()
 
 
 def _tmp(suffix: str) -> Path:
@@ -29,6 +26,11 @@ def _extract_first_frame(i_p: Path, o_p: Path) -> None:
     cv2.imwrite(str(o_p), image)
 
 
+def _render_tgs_first_frame(i_p: Path, o_p: Path) -> None:
+    with LottieAnimation.from_tgs(str(i_p)) as anim:
+        anim.save_frame(str(o_p), frame_num=0)
+
+
 # 下载贴纸并转成单张静态图片, 退出时删除全部临时文件
 @asynccontextmanager
 async def sticker_to_image(client: Client, file_id: str, mime_type: str) -> AsyncIterator[Path]:
@@ -42,8 +44,8 @@ async def sticker_to_image(client: Client, file_id: str, mime_type: str) -> Asyn
             await asyncio.to_thread(_extract_first_frame, i_p, o_p)
             yield o_p
         elif mime_type == "application/x-tgsticker":
-            o_p = _tmp(".webp")
-            await convMultLottie([FileMap(LottieFile(str(i_p)), {str(o_p)})], frameSkip=60)
+            o_p = _tmp(".png")
+            await asyncio.to_thread(_render_tgs_first_frame, i_p, o_p)
             yield o_p
         else:
             yield i_p
