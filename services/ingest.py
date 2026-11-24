@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
+from typing import TypedDict, cast
 
 from pyrogram import Client
 from pyrogram.types import Sticker as Stk
@@ -64,10 +64,25 @@ async def get_tag(client: Client, source: StickerSource) -> str | None:
     return tag
 
 
+class StickerInfo(TypedDict):
+    """入库/展示用的贴纸数据"""
+
+    uid: int
+    tag: str
+    sticker_id: str
+    sticker_unique_id: str
+    sticker_type: str | None
+    emoji: str | None
+    set_name: str
+    title: str
+    usage_count: int
+    time: int
+
+
 # 入库一张贴纸, 已存在时直接返回已有数据(幂等), 返回 (数据, 是否新插入), 识别失败返回 (None, False)
 async def insert_sticker(
     client: Client, uid: int, source: StickerSource, title: str | None = None
-) -> tuple[dict | None, bool]:
+) -> tuple[StickerInfo | None, bool]:
     async with get_session() as session:
         existing = await StickerRepo(session).get(uid, source.file_unique_id)
     if existing is not None:
@@ -82,7 +97,7 @@ async def insert_sticker(
     return stk_, True
 
 
-def sticker_to_dict(sticker: Sticker) -> dict[str, Any]:
+def sticker_to_dict(sticker: Sticker) -> StickerInfo:
     return {
         "uid": sticker.uid,
         "tag": sticker.tag,
@@ -99,7 +114,7 @@ def sticker_to_dict(sticker: Sticker) -> dict[str, Any]:
 
 async def create_sticker_data(
     client: Client, uid: int, tag: str, source: StickerSource, title: str | None = None
-) -> dict[str, Any]:
+) -> StickerInfo:
     # 优先用户自定义title > 传入的贴纸包title > 在线获取, 都不行就用 set_name
     async with get_session() as session:
         title = await StickerRepo(session).get_title_by_set(uid, source.set_name) or title

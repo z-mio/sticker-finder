@@ -55,6 +55,6 @@ async def parse_stickers(client: Client, set_name: str, known_hash: int = 0) -> 
     )
 
 
+# 去掉 a_/r_ 等前缀, 返回 sticker_unique_id
 def get_sticker_id(sid: str) -> str:
-    i = sid.split("_")
-    return "_".join(i[1:]) if i[1:] else i[0]
+    return sid.split("_", 1)[1] if "_" in sid else sid

@@ -1,9 +1,8 @@
-from typing import Any, cast
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
+    Message,
 )
 
 from db import get_session
@@ -20,8 +19,9 @@ async def set_auto_index(_: Client, callback_query: CallbackQuery) -> None:
     uid = callback_query.from_user.id
     async with get_session() as session:
         await AutoIndexService(session).toggle(uid, set_name)
-    message = cast(Any, callback_query.message)
-    button = cast(InlineKeyboardMarkup, message.reply_markup).inline_keyboard
+    message = callback_query.message
+    assert isinstance(message, Message) and isinstance(message.reply_markup, InlineKeyboardMarkup)
+    button = message.reply_markup.inline_keyboard
     button[-1] = [await build_auto_index_button(set_name, uid)]
 
     await message.edit_reply_markup(InlineKeyboardMarkup(button))

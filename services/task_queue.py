@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import os
 import time
-from typing import Any
+from typing import Literal, NotRequired, TypedDict
 
 from pyrogram import Client
 from pyrogram.errors import RPCError
@@ -12,11 +12,27 @@ from db import get_session
 from db.models.ingest import IngestJob
 from log import logger
 from repo.ingest import IngestRepo
-from services.ingest import _SUPPORTED_MIME, StickerSource, insert_sticker
+from services.ingest import _SUPPORTED_MIME, StickerInfo, StickerSource, insert_sticker
 
 WORKERS = min(32, (os.cpu_count() or 1) + 4)
 MAX_RETRIES = 3
 RETRY_DELAYS = (15, 30, 60)
+PROGRESS_UPDATE_EVERY = 5  # pack 任务每处理 5 个更新一次进度消息
+
+
+class JobFields(TypedDict):
+    """提交任务时写入 IngestJob 的字段"""
+
+    kind: Literal["single", "pack", "auto"]
+    uid: int
+    set_name: str
+    title: str | None
+    chat_id: int | None
+    message_id: int | None
+    total: int
+    created_at: float
+    auto_index_id: NotRequired[int]
+    target_hash: NotRequired[int]
 
 
 # 全局任务队列, 贴纸识别任务统一排队
@@ -49,7 +65,7 @@ class TaskQueue:
         self._retry_handles = []
 
     # 提交一个 job 及其任务, 返回 job_id; 全是重复任务时直接完成
-    async def submit(self, job_fields: dict[str, Any], sources: list[StickerSource]) -> int:
+    async def submit(self, job_fields: JobFields, sources: list[StickerSource]) -> int:
         async with get_session() as session:
             repo = IngestRepo(session)
             job = await repo.create_job(**job_fields)
@@ -63,7 +79,7 @@ class TaskQueue:
 
     # 任务清空时删除 job 并发送完成消息, 并发下只有一个调用生效
     # dup_single: kind=single 且 0 个任务入队(贴纸已在别的任务里)
-    async def finalize(self, job_id: int, result: dict | None = None, dup_single: bool = False) -> None:
+    async def finalize(self, job_id: int, result: StickerInfo | None = None, dup_single: bool = False) -> None:
         async with get_session() as session:
             job = await IngestRepo(session).finalize_job(job_id)
         if job is None:
@@ -148,12 +164,12 @@ class TaskQueue:
         if kind == "auto" and is_new and result is not None:
             await self._send_auto_notice(uid, job, source, result)
         # pack: 每 5 个更新一次进度消息
-        if kind == "pack" and job.chat_id and job.message_id and (job.done + job.failed) % 5 == 0:
+        if kind == "pack" and job.chat_id and job.message_id and (job.done + job.failed) % PROGRESS_UPDATE_EVERY == 0:
             await self._edit_progress(job)
 
         await self.finalize(job_id, result)
 
-    async def _send_auto_notice(self, uid: int, job: IngestJob, source: StickerSource, result: dict) -> None:
+    async def _send_auto_notice(self, uid: int, job: IngestJob, source: StickerSource, result: StickerInfo) -> None:
         assert self._client is not None
         button = InlineKeyboardMarkup(
             [
@@ -188,14 +204,14 @@ class TaskQueue:
         except RPCError as e:
             logger.debug(f"进度消息更新失败: {e}")
 
-    async def _send_final(self, job: IngestJob, result: dict | None, dup_single: bool = False) -> None:
+    async def _send_final(self, job: IngestJob, result: StickerInfo | None, dup_single: bool = False) -> None:
         assert self._client is not None
         if job.kind == "single":
             if result is not None:
                 from plugins.helpers import build_auto_index_button, single_sticker_buttons, sticker_info_text
 
-                button = single_sticker_buttons(result)
-                button.inline_keyboard.append([await build_auto_index_button(str(result["set_name"]), job.uid)])
+                button = single_sticker_buttons(result["sticker_unique_id"], result["set_name"])
+                button.inline_keyboard.append([await build_auto_index_button(result["set_name"], job.uid)])
                 await self._edit(job, sticker_info_text(result), button)
             elif dup_single:
                 await self._edit(job, "该贴纸已在队列中，请稍候")

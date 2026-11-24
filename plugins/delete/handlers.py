@@ -13,7 +13,7 @@ from pyrogram.types import (
 
 from db import get_session
 from log import logger
-from plugins.filters import filter_inline_query_results, is_admin
+from plugins.filters import filter_inline_query_results, is_admin, strip_inline_command
 from plugins.search.handlers import load_sticker
 from services.auto_index import AutoIndexService
 from services.sticker import StickerService
@@ -23,7 +23,7 @@ from utils.telegram import get_sticker_id, get_sticker_pack_name
 @Client.on_inline_query(filters.regex(r"^del[\s\S]*") & is_admin)
 @logger.catch()
 async def del_sticker(client: Client, inline_query: InlineQuery) -> None:
-    query = re.sub(r"del:|del\s|del", "", inline_query.query, count=1)
+    query = strip_inline_command(inline_query.query, "del")
     # 删除贴纸包
     if query.startswith("https://t.me/addstickers/"):
         pack_name = stk_pack_name(query) or ""

@@ -1,5 +1,3 @@
-import re
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     ChosenInlineResult,
@@ -12,7 +10,7 @@ from pyrogram.types import (
 
 from db import get_session
 from log import logger
-from plugins.filters import filter_inline_query_results, is_admin
+from plugins.filters import filter_inline_query_results, is_admin, strip_inline_command
 from plugins.search.handlers import load_sticker
 from repo.sticker import StickerRepo
 from utils.telegram import get_sticker_id
@@ -24,8 +22,7 @@ NEW_TAG: dict[int, str] = {}
 @Client.on_inline_query(filters.regex(r"^edit(?!.*https://t\.me/addstickers/\w*).*$") & is_admin)
 @logger.catch()
 async def edit_sticker(_: Client, inline_query: InlineQuery) -> None:
-    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, count=1)
-    edit_query_parts = edit_query.split(" ")
+    edit_query_parts = strip_inline_command(inline_query.query, "edit").split(" ")
 
     # @bot edit 新标签
     if len(edit_query_parts) == 1:
@@ -50,7 +47,7 @@ async def edit_sticker(_: Client, inline_query: InlineQuery) -> None:
 @Client.on_inline_query(filters.regex(r"^edit[\s\S]*(https://t.me/addstickers/\w+)") & is_admin)
 @logger.catch()
 async def edit_sticker_pack(_: Client, inline_query: InlineQuery) -> None:
-    edit_query = re.sub(r"edit:|edit\s|edit", "", inline_query.query, count=1).split(" ")
+    edit_query = strip_inline_command(inline_query.query, "edit").split(" ")
     if new_tag_parts := edit_query[1:]:
         new_tag = "".join(new_tag_parts)
         NEW_TAG[inline_query.from_user.id] = new_tag

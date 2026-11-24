@@ -4,6 +4,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from db import get_session
 from services.auto_index import AutoIndexService
+from services.ingest import StickerInfo
 
 COMMANDS = {
     "start": "开始",
@@ -29,32 +30,28 @@ def pack_buttons(set_name: str) -> list[InlineKeyboardButton]:
     ]
 
 
-def sticker_info_text(stk: dict) -> str:
+def sticker_info_text(stk: StickerInfo) -> str:
     return (
         f"✅添加成功!\n**标签：**`{stk['tag']}`\n**Emoji：**`{stk['emoji']}`\n"
         f"**贴纸包：**`{stk['title']}` | `{stk['set_name']}`"
     )
 
 
-def single_sticker_buttons(stk: dict) -> InlineKeyboardMarkup:
+def single_sticker_buttons(sticker_unique_id: str, set_name: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(
-                    "编辑标签", switch_inline_query_current_chat=f"edit {stk['sticker_unique_id']}\000"
-                ),
-                InlineKeyboardButton(
-                    "删除贴纸", switch_inline_query_current_chat=f"del {stk['sticker_unique_id']}\000"
-                ),
+                InlineKeyboardButton("编辑标签", switch_inline_query_current_chat=f"edit {sticker_unique_id}\000"),
+                InlineKeyboardButton("删除贴纸", switch_inline_query_current_chat=f"del {sticker_unique_id}\000"),
             ],
             [
                 InlineKeyboardButton(
                     "编辑贴纸包",
-                    switch_inline_query_current_chat=f"edit https://t.me/addstickers/{stk['set_name']}\000",
+                    switch_inline_query_current_chat=f"edit https://t.me/addstickers/{set_name}\000",
                 ),
                 InlineKeyboardButton(
                     "删除贴纸包",
-                    switch_inline_query_current_chat=f"del https://t.me/addstickers/{stk['set_name']}\000",
+                    switch_inline_query_current_chat=f"del https://t.me/addstickers/{set_name}\000",
                 ),
             ],
         ]

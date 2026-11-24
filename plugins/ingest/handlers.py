@@ -64,7 +64,8 @@ async def add_sticker(client: Client, message: Message) -> None:
         sticker.emoji = "😀"
 
     uid = message.from_user.id
-    button = single_sticker_buttons({"sticker_unique_id": sticker.file_unique_id, "set_name": sticker.set_name})
+    assert sticker.set_name is not None
+    button = single_sticker_buttons(sticker.file_unique_id, sticker.set_name)
     button.inline_keyboard.append([await build_auto_index_button(sticker.set_name, uid)])
     text = "**标签：**`{tag}`\n**Emoji：**`{emoji}`\n**贴纸包：**`{title}` | `{set_name}`"
 

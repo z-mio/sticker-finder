@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from pyrogram import Client, filters
@@ -38,3 +39,8 @@ def filter_inline_query_results(command: str) -> filters.Filter:
         return bool(update.query.startswith(command))
 
     return filters.create(func, name="InlineQueryResultFilter", commands=command)
+
+
+# 去掉查询开头的内联命令, 保留后面的内容(可无空格, 如 "edithttps://...")
+def strip_inline_command(query: str, command: str) -> str:
+    return re.sub(rf"{command}:|{command}\s|{command}", "", query, count=1)
