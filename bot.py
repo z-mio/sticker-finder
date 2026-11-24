@@ -3,22 +3,16 @@ import contextlib
 from typing import Any
 
 from pyrogram import Client
-from pyrogram.handlers import ConnectHandler, DisconnectHandler
 from pyrogram.types import BotCommand
 
-from core.config import bs, ws
+from core.config import bs
 from core.task_queue import task_queue
-from core.watchdog import on_connect, on_disconnect
 from db.engine import close_db
 from db.init import init_db
 from log import logger, setup_logging
 from plugins.auto_index import auto_index_loop
-from utils.event_loop import setup_optimized_event_loop
 
 setup_logging(debug=bs.debug)
-
-setup_optimized_event_loop()
-loop = asyncio.new_event_loop()
 
 COMMANDS = {
     "start": "开始",
@@ -35,14 +29,12 @@ class Bot(Client):
             bot_token=bs.bot_token,
             plugins={"root": "plugins"},
             proxy=bs.bot_proxy,
-            loop=loop,
             workdir=bs.bot_workdir,
             lang_code="zh",
         )
-        self._auto_index_task: asyncio.Task | None = None
+        self._auto_index_task: asyncio.Task[None] | None = None
 
     async def start(self, **kwargs: Any) -> Client:
-        self.init_watchdog()
         logger.info("初始化数据库...")
         await init_db()
         await super().start(**kwargs)
@@ -52,7 +44,6 @@ class Bot(Client):
         return self
 
     async def stop(self, *args: Any, **kwargs: Any) -> Client:
-        ws.exit_flag = True
         if self._auto_index_task is not None:
             self._auto_index_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -62,10 +53,6 @@ class Bot(Client):
         await super().stop(*args, **kwargs)
         await close_db()
         return self
-
-    def init_watchdog(self) -> None:
-        self.add_handler(ConnectHandler(on_connect))
-        self.add_handler(DisconnectHandler(on_disconnect))
 
     async def set_menu(self) -> None:
         commands = await self.get_bot_commands()
