@@ -15,7 +15,12 @@ from utils.ai import recognize_sticker
 from utils.media import sticker_to_image
 from utils.telegram import get_sticker_pack_name
 
-_SUPPORTED_MIME = ("image/webp", "video/webm", "application/x-tgsticker")
+_SUPPORTED_MIME = (
+    "image/webp",
+    "video/webm",
+    "application/x-tgsticker",
+    "application/x-bad-tgsticker",
+)
 
 
 # 入库用的贴纸信息, 可以来自 pyrogram Sticker 或 IngestTask
@@ -29,13 +34,14 @@ class StickerSource:
     date: int
 
     @classmethod
-    def from_sticker(cls, stk: Stk) -> "StickerSource":
+    def from_sticker(cls, stk: Stk, set_name: str | None = None) -> "StickerSource":
+        # GetStickerSet 解析出的贴纸 set_name 可能为 None, 调用方要显式传包名
         return cls(
             file_id=stk.file_id,
             file_unique_id=stk.file_unique_id,
             mime_type=stk.mime_type,
             emoji=stk.emoji,
-            set_name=cast(str, stk.set_name),
+            set_name=set_name or cast(str, stk.set_name),
             date=int(cast(datetime, stk.date).timestamp()) if stk.date else int(time.time()),
         )
 

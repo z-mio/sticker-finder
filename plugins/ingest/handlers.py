@@ -129,7 +129,7 @@ async def add_sticker_pack(client: Client, message: Message, set_name: str) -> N
             "total": stk_pack.count,
             "created_at": time.time(),
         },
-        [StickerSource.from_sticker(s) for s in pending],
+        [StickerSource.from_sticker(s, set_name) for s in pending],
     )
 
 

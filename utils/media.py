@@ -34,7 +34,9 @@ def _render_tgs_first_frame(i_p: Path, o_p: Path) -> None:
 # 下载贴纸并转成单张静态图片, 退出时删除全部临时文件
 @asynccontextmanager
 async def sticker_to_image(client: Client, file_id: str, mime_type: str) -> AsyncIterator[Path]:
-    suffix = {"video/webm": ".webm", "application/x-tgsticker": ".tgs"}.get(mime_type, ".webp")
+    # TG 实际会出现 application/x-tgsticker 和 application/x-bad-tgsticker
+    is_tgs = mime_type.endswith("tgsticker")
+    suffix = ".webm" if mime_type == "video/webm" else ".tgs" if is_tgs else ".webp"
     i_p = _tmp(suffix)
     o_p: Path | None = None
     try:
@@ -43,7 +45,7 @@ async def sticker_to_image(client: Client, file_id: str, mime_type: str) -> Asyn
             o_p = _tmp(".png")
             await asyncio.to_thread(_extract_first_frame, i_p, o_p)
             yield o_p
-        elif mime_type == "application/x-tgsticker":
+        elif is_tgs:
             o_p = _tmp(".png")
             await asyncio.to_thread(_render_tgs_first_frame, i_p, o_p)
             yield o_p

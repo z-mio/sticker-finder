@@ -57,7 +57,7 @@ async def update(client: Client, i: AutoIndexSticker) -> None:
         return
     async with get_session() as session:
         existing = set(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
-    sources = [StickerSource.from_sticker(s) for s in stk_set.stickers if s.file_unique_id not in existing]
+    sources = [StickerSource.from_sticker(s, set_name) for s in stk_set.stickers if s.file_unique_id not in existing]
     if not sources:
         # 没有新贴纸, 直接写回 hash
         async with get_session() as session:
