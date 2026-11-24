@@ -3,3 +3,5 @@ logs
 .env
 sessions
 data
+__pycache__/
+*.pyc
