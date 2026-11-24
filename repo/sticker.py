@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import cast
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.sticker import Sticker
@@ -22,7 +22,7 @@ class StickerRepo:
                     Sticker.tag.ilike(f"%{query}%"),
                     Sticker.emoji.ilike(f"%{query}%"),
                     Sticker.title.ilike(f"%{query}%"),
-                    Sticker.set_name == query,
+                    func.lower(Sticker.set_name) == query.lower(),
                     Sticker.sticker_unique_id == query,
                 ),
                 Sticker.uid == uid,
@@ -35,12 +35,14 @@ class StickerRepo:
         return result.all()
 
     async def list_unique_ids_by_set(self, uid: int, set_name: str) -> Sequence[str]:
-        stmt = select(Sticker.sticker_unique_id).where(Sticker.set_name == set_name, Sticker.uid == uid)
+        stmt = select(Sticker.sticker_unique_id).where(
+            func.lower(Sticker.set_name) == set_name.lower(), Sticker.uid == uid
+        )
         result = await self._session.scalars(stmt)
         return result.all()
 
     async def get_title_by_set(self, uid: int, set_name: str) -> str | None:
-        stmt = select(Sticker.title).where(Sticker.set_name == set_name, Sticker.uid == uid)
+        stmt = select(Sticker.title).where(func.lower(Sticker.set_name) == set_name.lower(), Sticker.uid == uid)
         return cast(str | None, await self._session.scalar(stmt))
 
     async def add(self, sticker: Sticker) -> Sticker:
@@ -61,14 +63,18 @@ class StickerRepo:
         await self._session.execute(stmt)
 
     async def update_title_by_set(self, uid: int, set_name: str, new_title: str) -> None:
-        stmt = update(Sticker).where(Sticker.set_name == set_name, Sticker.uid == uid).values(title=new_title)
+        stmt = (
+            update(Sticker)
+            .where(func.lower(Sticker.set_name) == set_name.lower(), Sticker.uid == uid)
+            .values(title=new_title)
+        )
         await self._session.execute(stmt)
 
     async def remove(self, sticker: Sticker) -> None:
         await self._session.delete(sticker)
 
     async def remove_by_set(self, uid: int, set_name: str) -> None:
-        stmt = delete(Sticker).where(Sticker.set_name == set_name, Sticker.uid == uid)
+        stmt = delete(Sticker).where(func.lower(Sticker.set_name) == set_name.lower(), Sticker.uid == uid)
         await self._session.execute(stmt)
 
     async def remove_by_uid(self, uid: int) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import delete, exists, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,7 +80,9 @@ class IngestRepo:
         await self._session.execute(delete(IngestJob).where(IngestJob.uid == uid))
 
     async def delete_jobs(self, uid: int, set_name: str) -> None:
-        await self._session.execute(delete(IngestJob).where(IngestJob.uid == uid, IngestJob.set_name == set_name))
+        await self._session.execute(
+            delete(IngestJob).where(IngestJob.uid == uid, func.lower(IngestJob.set_name) == set_name.lower())
+        )
 
     # 标记用户的进行中的 job 为停止
     async def stop_active_job(self, uid: int, kind: str) -> IngestJob | None:

@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.auto_index import AutoIndexSticker
@@ -12,7 +12,9 @@ class AutoIndexRepo:
         self._session = session
 
     async def get(self, uid: int, set_name: str) -> AutoIndexSticker | None:
-        stmt = select(AutoIndexSticker).where(AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == set_name)
+        stmt = select(AutoIndexSticker).where(
+            AutoIndexSticker.uid == uid, func.lower(AutoIndexSticker.set_name) == set_name.lower()
+        )
         return cast(AutoIndexSticker | None, await self._session.scalar(stmt))
 
     async def get_by_id(self, record_id: int) -> AutoIndexSticker | None:

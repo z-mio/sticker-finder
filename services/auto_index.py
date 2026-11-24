@@ -55,6 +55,8 @@ async def update(client: Client, i: AutoIndexSticker) -> None:
         return
     if stk_set.not_modified:
         return
+    # 用 TG 返回的正式短名, 订阅里可能存着链接的旧拼写
+    set_name = stk_set.short_name
     async with get_session() as session:
         existing = set(await StickerRepo(session).list_unique_ids_by_set(uid, set_name))
     sources = [StickerSource.from_sticker(s, set_name) for s in stk_set.stickers if s.file_unique_id not in existing]
