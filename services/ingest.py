@@ -133,7 +133,7 @@ async def create_sticker_data(
         "sticker_id": source.file_id,
         "sticker_unique_id": source.file_unique_id,
         "sticker_type": source.mime_type,
-        "emoji": source.emoji,
+        "emoji": source.emoji or "😀",  # 贴纸可能没有 emoji, 与单贴纸路径一致兜底
         "set_name": source.set_name,
         "title": title or source.set_name,
         "usage_count": 0,
