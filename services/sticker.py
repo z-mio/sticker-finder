@@ -40,8 +40,7 @@ class StickerService:
     # 删除贴纸包: 队列任务 + 自动索引 + 相关最近使用 + 所有贴纸
     async def delete_pack(self, uid: int, set_name: str) -> None:
         await self.ingest.delete_jobs(uid, set_name)
-        if record := await self.auto_index.get(uid, set_name):
-            await self.auto_index.remove(record)
+        await self.auto_index.remove_by_set(uid, set_name)
         unique_ids = await self.stickers.list_unique_ids_by_set(uid, set_name)
         await self.recently_used.remove_by_unique_ids(uid, unique_ids)
         await self.stickers.remove_by_set(uid, set_name)
