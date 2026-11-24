@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models.auto_index import AutoIndexSticker
@@ -12,7 +12,9 @@ class AutoIndexRepo:
         self._session = session
 
     async def get(self, uid: int, set_name: str) -> AutoIndexSticker | None:
-        stmt = select(AutoIndexSticker).where(AutoIndexSticker.uid == uid, AutoIndexSticker.set_name == set_name)
+        stmt = select(AutoIndexSticker).where(
+            AutoIndexSticker.uid == uid, func.lower(AutoIndexSticker.set_name) == set_name.lower()
+        )
         return cast(AutoIndexSticker | None, await self._session.scalar(stmt))
 
     async def get_by_id(self, record_id: int) -> AutoIndexSticker | None:
@@ -30,6 +32,13 @@ class AutoIndexRepo:
 
     async def remove(self, record: AutoIndexSticker) -> None:
         await self._session.delete(record)
+
+    # 删掉同一贴纸包的所有订阅(可能有不同大小写拼写的残留)
+    async def remove_by_set(self, uid: int, set_name: str) -> None:
+        stmt = delete(AutoIndexSticker).where(
+            AutoIndexSticker.uid == uid, func.lower(AutoIndexSticker.set_name) == set_name.lower()
+        )
+        await self._session.execute(stmt)
 
     async def update_hash(self, record_id: int, new_hash: int) -> None:
         stmt = update(AutoIndexSticker).where(AutoIndexSticker.id == record_id).values(hash=new_hash)

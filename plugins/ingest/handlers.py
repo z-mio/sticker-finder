@@ -105,6 +105,8 @@ async def add_sticker_pack(client: Client, message: Message, set_name: str) -> N
 
     assert message.from_user is not None
     uid = message.from_user.id
+    # 用 TG 返回的正式短名, 避免同一包按不同大小写拼写重复入库
+    set_name = stk_pack.short_name
 
     # 已存在和包内重复的贴纸只取一次
     async with get_session() as session:
@@ -129,7 +131,7 @@ async def add_sticker_pack(client: Client, message: Message, set_name: str) -> N
             "total": stk_pack.count,
             "created_at": time.time(),
         },
-        [StickerSource.from_sticker(s) for s in pending],
+        [StickerSource.from_sticker(s, set_name) for s in pending],
     )
 
 
