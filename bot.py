@@ -6,18 +6,14 @@ from pyrogram import Client
 from pyrogram.types import BotCommand
 
 from core.config import bs
-from core.task_queue import task_queue
 from db.engine import close_db
 from db.init import init_db
 from log import logger, setup_logging
-from plugins.auto_index import auto_index_loop
+from plugins.helpers import COMMANDS
+from services.auto_index import auto_index_loop
+from services.task_queue import task_queue
 
 setup_logging(debug=bs.debug)
-
-COMMANDS = {
-    "start": "开始",
-    "help": "帮助",
-}
 
 
 class Bot(Client):

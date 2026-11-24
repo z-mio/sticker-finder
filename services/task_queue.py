@@ -172,9 +172,11 @@ class TaskQueue:
             logger.warning(f"自动索引通知发送失败: {e}")
 
     async def _edit_progress(self, job: IngestJob) -> None:
+        from plugins.helpers import pack_buttons
+
         assert self._client is not None
         markup = InlineKeyboardMarkup(
-            [_pack_buttons(job.set_name), [InlineKeyboardButton("停止添加", callback_data="sticker_stop")]]
+            [pack_buttons(job.set_name), [InlineKeyboardButton("停止添加", callback_data="sticker_stop")]]
         )
         try:
             await self._client.edit_message_text(
@@ -190,11 +192,11 @@ class TaskQueue:
         assert self._client is not None
         if job.kind == "single":
             if result is not None:
-                from plugins.auto_index import build_auto_index_button
+                from plugins.helpers import build_auto_index_button, single_sticker_buttons, sticker_info_text
 
-                button = _single_buttons(result)
+                button = single_sticker_buttons(result)
                 button.inline_keyboard.append([await build_auto_index_button(str(result["set_name"]), job.uid)])
-                await self._edit(job, _info_text(result), button)
+                await self._edit(job, sticker_info_text(result), button)
             elif dup_single:
                 await self._edit(job, "该贴纸已在队列中，请稍候")
             else:
@@ -203,7 +205,7 @@ class TaskQueue:
             if job.stopped:
                 await self._edit(job, "已停止添加")
                 return
-            from plugins.auto_index import build_auto_index_button
+            from plugins.helpers import build_auto_index_button, pack_buttons
 
             text = f"""
 ✅完成！
@@ -214,7 +216,7 @@ class TaskQueue:
             if job.failed:
                 text += f"失败: `{job.failed}` 张（识别失败未添加，重新发送链接可补齐）\n"
             markup = InlineKeyboardMarkup(
-                [_pack_buttons(job.set_name), [await build_auto_index_button(job.set_name, job.uid)]]
+                [pack_buttons(job.set_name), [await build_auto_index_button(job.set_name, job.uid)]]
             )
             await self._edit(job, text, markup)
         elif job.kind == "auto":
@@ -235,50 +237,6 @@ class TaskQueue:
             await self._client.edit_message_text(int(job.chat_id), int(job.message_id), text, reply_markup=markup)
         except RPCError as e:
             logger.debug(f"结果消息发送失败: {e}")
-
-
-def _pack_buttons(set_name: str) -> list[InlineKeyboardButton]:
-    return [
-        InlineKeyboardButton("查看贴纸包", switch_inline_query_current_chat=set_name),
-        InlineKeyboardButton(
-            "编辑贴纸包", switch_inline_query_current_chat=f"edit https://t.me/addstickers/{set_name}\000"
-        ),
-        InlineKeyboardButton(
-            "删除贴纸包", switch_inline_query_current_chat=f"del https://t.me/addstickers/{set_name}\000"
-        ),
-    ]
-
-
-def _info_text(stk: dict) -> str:
-    return (
-        f"✅添加成功!\n**标签：**`{stk['tag']}`\n**Emoji：**`{stk['emoji']}`\n"
-        f"**贴纸包：**`{stk['title']}` | `{stk['set_name']}`"
-    )
-
-
-def _single_buttons(stk: dict) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "编辑标签", switch_inline_query_current_chat=f"edit {stk['sticker_unique_id']}\000"
-                ),
-                InlineKeyboardButton(
-                    "删除贴纸", switch_inline_query_current_chat=f"del {stk['sticker_unique_id']}\000"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "编辑贴纸包",
-                    switch_inline_query_current_chat=f"edit https://t.me/addstickers/{stk['set_name']}\000",
-                ),
-                InlineKeyboardButton(
-                    "删除贴纸包",
-                    switch_inline_query_current_chat=f"del https://t.me/addstickers/{stk['set_name']}\000",
-                ),
-            ],
-        ]
-    )
 
 
 task_queue = TaskQueue()

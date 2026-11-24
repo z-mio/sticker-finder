@@ -1,5 +1,6 @@
 from pyrogram import Client
 from pyrogram.types import (
+    ChosenInlineResult,
     InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResult,
@@ -10,8 +11,9 @@ from pyrogram.types import (
 
 from db import get_session
 from log import logger
+from plugins.filters import is_admin, is_inline_command
 from services.sticker import StickerService
-from utils.filters import is_admin, is_inline_command
+from utils.telegram import get_sticker_id
 
 PAGE_SIZE = 15
 
@@ -95,3 +97,13 @@ async def load_sticker(
             switch_pm_text="点击跳转到bot",
             switch_pm_parameter="pm",
         )
+
+
+# 最近使用
+@Client.on_chosen_inline_result(~is_inline_command)
+@logger.catch()
+async def stickers_used(_: Client, chosen: ChosenInlineResult) -> None:
+    if chosen.result_id.startswith("icon"):
+        return
+    async with get_session() as session:
+        await StickerService(session).record_use(chosen.from_user.id, get_sticker_id(chosen.result_id))

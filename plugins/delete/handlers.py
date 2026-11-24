@@ -13,10 +13,10 @@ from pyrogram.types import (
 
 from db import get_session
 from log import logger
-from plugins.find_sticker import load_sticker
+from plugins.filters import filter_inline_query_results, is_admin
+from plugins.search.handlers import load_sticker
 from services.auto_index import AutoIndexService
 from services.sticker import StickerService
-from utils.filters import filter_inline_query_results, is_admin
 from utils.telegram import get_sticker_id, get_sticker_pack_name
 
 
