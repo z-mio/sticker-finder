@@ -5,22 +5,20 @@ from typing import cast
 from pyrogram import Client, filters
 from pyrogram.types import (
     CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     LinkPreviewOptions,
     Message,
 )
 from pyrogram.types import Sticker as Stk
 
-from core.task_queue import task_queue
 from db import get_session
-from db.models.sticker import Sticker
 from log import logger
-from plugins.auto_index import build_auto_index_button
+from plugins.filters import is_admin
+from plugins.helpers import build_auto_index_button, single_sticker_buttons
 from repo.ingest import IngestRepo
 from repo.sticker import StickerRepo
 from services.ingest import StickerSource
-from utils.filters import is_admin
+from services.sticker import StickerService
+from services.task_queue import task_queue
 from utils.rate_limit import rate_limit
 from utils.telegram import parse_stickers
 
@@ -66,38 +64,19 @@ async def add_sticker(client: Client, message: Message) -> None:
         sticker.emoji = "😀"
 
     uid = message.from_user.id
-    button = [
-        [
-            InlineKeyboardButton(
-                "编辑标签",
-                switch_inline_query_current_chat=f"edit {sticker.file_unique_id}\000",
-            ),
-            InlineKeyboardButton(
-                "删除贴纸",
-                switch_inline_query_current_chat=f"del {sticker.file_unique_id}\000",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "编辑贴纸包",
-                switch_inline_query_current_chat=f"edit https://t.me/addstickers/{sticker.set_name}\000",
-            ),
-            InlineKeyboardButton(
-                "删除贴纸包",
-                switch_inline_query_current_chat=f"del https://t.me/addstickers/{sticker.set_name}\000",
-            ),
-        ],
-        [await build_auto_index_button(sticker.set_name, uid)],
-    ]
+    button = single_sticker_buttons({"sticker_unique_id": sticker.file_unique_id, "set_name": sticker.set_name})
+    button.inline_keyboard.append([await build_auto_index_button(sticker.set_name, uid)])
     text = "**标签：**`{tag}`\n**Emoji：**`{emoji}`\n**贴纸包：**`{title}` | `{set_name}`"
 
     # 如果贴纸已经存在就发送贴纸信息
-    if stk := await sticker_exist(uid, sticker.file_unique_id):
+    async with get_session() as session:
+        stk = await StickerService(session).get(uid, sticker.file_unique_id)
+    if stk is not None:
         text = (
             f"{text.format(tag=stk.tag, emoji=stk.emoji, title=stk.title, set_name=stk.set_name)}"
             f"\n**使用次数：**`{stk.usage_count + 1}`"
         )
-        await message.reply(text, reply_markup=InlineKeyboardMarkup(button))
+        await message.reply(text, reply_markup=button)
         return
 
     msg = cast(Message, await message.reply("添加中...", disable_notification=True))
@@ -165,9 +144,3 @@ async def stop_add_sticker(_: Client, callback_query: CallbackQuery) -> None:
     if job_id is not None:
         await task_queue.finalize(job_id)
     await callback_query.answer()
-
-
-# 判断贴纸是否已存在
-async def sticker_exist(uid: int, file_unique_id: str) -> Sticker | None:
-    async with get_session() as session:
-        return await StickerRepo(session).get(uid, file_unique_id)
