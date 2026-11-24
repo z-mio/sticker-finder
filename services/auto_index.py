@@ -12,6 +12,7 @@ from repo.auto_index import AutoIndexRepo
 from repo.ingest import IngestRepo
 from repo.sticker import StickerRepo
 from services.ingest import StickerSource
+from services.task_queue import task_queue
 from utils.telegram import parse_stickers
 
 
@@ -43,8 +44,6 @@ class AutoIndexService:
 
 
 async def update(client: Client, i: AutoIndexSticker) -> None:
-    from services.task_queue import task_queue
-
     set_name = i.set_name
     uid = i.uid
     async with get_session() as session:

@@ -52,7 +52,7 @@ class Bot(Client):
 
     async def set_menu(self) -> None:
         commands = await self.get_bot_commands()
-        if len(commands) == len(COMMANDS) and all(c.description in str(COMMANDS.values()) for c in commands):
+        if {c.command: c.description for c in commands} == COMMANDS:
             logger.debug("菜单无变化, 跳过设置")
             return
         await self.set_bot_commands([BotCommand(command=k, description=v) for k, v in COMMANDS.items()])

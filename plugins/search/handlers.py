@@ -17,12 +17,23 @@ from utils.telegram import get_sticker_id
 
 PAGE_SIZE = 15
 
+_ICON_HISTORY_FILE_ID = "CAACAgUAAxkBAAEWiBtk_Tl-PGEw5cHrX1fvPxAhl6peTQACPQsAAuTA6FfdYfY8HDl01zAE"
+_ICON_ALL_FILE_ID = "CAACAgUAAxkBAAEWiBlk_TlzPMQ_kUYHH5Eb9yGHdjfMYwACnwwAAgVq6Vc1hkbCLtDWpDAE"
+
 
 @Client.on_inline_query(is_admin & ~is_inline_command)
 @logger.catch()
 async def find_sticker(_: Client, inline_query: InlineQuery) -> None:
     query = "%".join(inline_query.query.split(" "))
     await load_sticker(inline_query, query)
+
+
+def _icon_result(result_id: str, sticker_file_id: str, text: str) -> InlineQueryResultCachedSticker:
+    return InlineQueryResultCachedSticker(
+        sticker_file_id=sticker_file_id,
+        id=result_id,
+        input_message_content=InputTextMessageContent(text),
+    )
 
 
 async def load_sticker(
@@ -40,42 +51,27 @@ async def load_sticker(
     next_offset = str(offset + PAGE_SIZE) if has_more else ""
 
     if stickers or offset:
-        results: list[InlineQueryResult] = [
+        results: list[InlineQueryResult] = []
+        # 只在第一页显示历史记录: icon_history, 最近使用的贴纸(新→旧), icon_all
+        if offset == 0 and not query:
+            results.append(_icon_result("icon_history", _ICON_HISTORY_FILE_ID, "最近使用"))
+            results.extend(
+                InlineQueryResultCachedSticker(
+                    sticker_file_id=i.sticker_id,
+                    id=f"r_{i.sticker_unique_id}",
+                    reply_markup=button,
+                )
+                for i in reversed(recently)
+            )
+            results.append(_icon_result("icon_all", _ICON_ALL_FILE_ID, "全部贴纸"))
+        results.extend(
             InlineQueryResultCachedSticker(
                 sticker_file_id=i.sticker_id,
                 id=f"a_{i.sticker_unique_id}",
                 reply_markup=button,
             )
             for i in stickers
-        ]
-
-        # 只在第一页显示历史记录
-        if offset == 0 and not query:
-            results.insert(
-                0,
-                InlineQueryResultCachedSticker(
-                    sticker_file_id="CAACAgUAAxkBAAEWiBlk_TlzPMQ_kUYHH5Eb9yGHdjfMYwACnwwAAgVq6Vc1hkbCLtDWpDAE",
-                    id="icon_all",
-                    input_message_content=InputTextMessageContent("全部贴纸"),
-                ),
-            )
-
-            for i in recently:
-                r = InlineQueryResultCachedSticker(
-                    sticker_file_id=i.sticker_id,
-                    id=f"r_{i.sticker_unique_id}",
-                    reply_markup=button,
-                )
-                results.insert(0, r)
-
-            results.insert(
-                0,
-                InlineQueryResultCachedSticker(
-                    sticker_file_id="CAACAgUAAxkBAAEWiBtk_Tl-PGEw5cHrX1fvPxAhl6peTQACPQsAAuTA6FfdYfY8HDl01zAE",
-                    id="icon_history",
-                    input_message_content=InputTextMessageContent("最近使用"),
-                ),
-            )
+        )
         await inline_query.answer(
             results=results,
             is_gallery=True,
